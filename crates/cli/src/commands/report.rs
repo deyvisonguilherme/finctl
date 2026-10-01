@@ -1,11 +1,12 @@
 use crate::format::OutputFormat;
-use app::{CategoryReportInput, MonthlyReportInput, ReportService};
+use app::{CategoryReportInput, CompareCategoriesInput, MonthlyReportInput, ReportService};
 use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Row, Table};
 use domain::{
-    format_decimal_pt_br, CategoryReportSummary, MonthlyReportItem, TransactionKind, UserId,
+    format_decimal_pt_br, CategoryComparisonReport, CategoryReportSummary, MonthlyReportItem,
+    TransactionKind, UserId,
 };
 use rust_decimal::Decimal;
 use serde::Serialize;
@@ -18,6 +19,9 @@ pub enum ReportCommands {
 
     /// Relatório de gastos ou receitas agrupados por categoria
     Categories(CategoriesArgs),
+
+    /// Comparativo de categorias entre meses com variação absoluta e percentual
+    Compare(CompareArgs),
 }
 
 #[derive(Args, Debug)]
@@ -70,6 +74,33 @@ pub struct CategoriesArgs {
     pub format: OutputFormat,
 }
 
+#[derive(Args, Debug)]
+pub struct CompareArgs {
+    /// Meses para comparar separados por vírgula (ex: 2026-08,2026-09)
+    #[arg(short, long, value_delimiter = ',')]
+    pub months: Option<Vec<String>>,
+
+    /// Quantidade dos últimos N meses para comparar (ex: 2, 3, 6)
+    #[arg(short, long)]
+    pub last: Option<u32>,
+
+    /// Filtrar por tipo de transação (income/receita ou expense/despesa)
+    #[arg(short, long)]
+    pub kind: Option<TransactionKind>,
+
+    /// Filtrar por nome ou UUID da conta
+    #[arg(short, long)]
+    pub account: Option<String>,
+
+    /// Incluir lançamentos previstos/pendentes no relatório
+    #[arg(long)]
+    pub include_pending: bool,
+
+    /// Formato de saída dos dados
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
+    pub format: OutputFormat,
+}
+
 #[derive(Serialize)]
 struct MonthlyExportItem {
     month: String,
@@ -104,6 +135,7 @@ pub async fn handle_report_command(
     match command {
         ReportCommands::Monthly(args) => handle_monthly(pool, user_id, args).await,
         ReportCommands::Categories(args) => handle_categories(pool, user_id, args).await,
+        ReportCommands::Compare(args) => handle_compare(pool, user_id, args).await,
     }
 }
 
@@ -248,6 +280,76 @@ async fn handle_categories(
                     i.total_amount.as_decimal(),
                     i.percentage
                 );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_compare(
+    pool: &PgPool,
+    user_id: UserId,
+    args: CompareArgs,
+) -> Result<(), (String, u8)> {
+    let service = ReportService::new(pool);
+    let report = service
+        .compare_categories(CompareCategoriesInput {
+            user_id,
+            months: args.months.clone(),
+            last_n: args.last,
+            kind: args.kind,
+            account_query: args.account.clone(),
+            include_pending: args.include_pending,
+        })
+        .await
+        .map_err(|e| (format!("Erro ao gerar comparativo: {e}"), 1))?;
+
+    if report.rows.is_empty() {
+        if args.format == OutputFormat::Table {
+            println!("Nenhuma movimentação encontrada para o período e filtros informados.");
+        } else if args.format == OutputFormat::Json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            );
+        } else {
+            println!("category_name,kind,variation_amount,variation_percent");
+        }
+        return Ok(());
+    }
+
+    match args.format {
+        OutputFormat::Table => print_compare_table(&report),
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&report)
+                .map_err(|e| (format!("Erro ao serializar JSON: {e}"), 1))?;
+            println!("{json}");
+        }
+        OutputFormat::Csv => {
+            let mut header = vec!["category_name".to_string(), "kind".to_string()];
+            for m in &report.months {
+                header.push(m.clone());
+            }
+            header.push("variation_amount".to_string());
+            header.push("variation_percent".to_string());
+            println!("{}", header.join(","));
+
+            for row in &report.rows {
+                let mut line = vec![
+                    format!("\"{}\"", row.category_name),
+                    row.kind.as_str().to_string(),
+                ];
+                for (_, money) in &row.monthly_amounts {
+                    line.push(money.as_decimal().to_string());
+                }
+                line.push(row.absolute_diff.to_string());
+                line.push(
+                    row.percent_diff
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "n/d".to_string()),
+                );
+                println!("{}", line.join(","));
             }
         }
     }
@@ -414,6 +516,137 @@ fn print_categories_table(summary: &CategoryReportSummary, depth: u32) {
     total_row.add_cell(Cell::new("100,00%").set_alignment(CellAlignment::Right));
 
     table.add_row(total_row);
+
+    println!("{table}");
+}
+
+fn print_compare_table(report: &CategoryComparisonReport) {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(UTF8_ROUND_CORNERS);
+
+    let mut header = vec![
+        Cell::new("Categoria").set_alignment(CellAlignment::Left),
+        Cell::new("Tipo").set_alignment(CellAlignment::Center),
+    ];
+
+    for m in &report.months {
+        header.push(Cell::new(m).set_alignment(CellAlignment::Right));
+    }
+    header.push(Cell::new("Variação (R$)").set_alignment(CellAlignment::Right));
+    header.push(Cell::new("Variação (%)").set_alignment(CellAlignment::Right));
+
+    table.set_header(header);
+
+    let mut month_totals = vec![Decimal::ZERO; report.months.len()];
+
+    for row in &report.rows {
+        let kind_color = match row.kind {
+            TransactionKind::Income => Color::Green,
+            TransactionKind::Expense => Color::Red,
+        };
+
+        let mut row_cells = vec![
+            Cell::new(&row.category_name),
+            Cell::new(row.kind.display_pt_br())
+                .set_alignment(CellAlignment::Center)
+                .fg(kind_color),
+        ];
+
+        for (i, (_, money)) in row.monthly_amounts.iter().enumerate() {
+            month_totals[i] += money.as_decimal();
+            row_cells.push(Cell::new(money.format_pt_br()).set_alignment(CellAlignment::Right));
+        }
+
+        // Color coding for variation:
+        // For expenses: increase is red, decrease is green
+        // For incomes: increase is green, decrease is red
+        let diff_color = match row.kind {
+            TransactionKind::Expense => {
+                if row.absolute_diff > Decimal::ZERO {
+                    Color::Red
+                } else if row.absolute_diff < Decimal::ZERO {
+                    Color::Green
+                } else {
+                    Color::White
+                }
+            }
+            TransactionKind::Income => {
+                if row.absolute_diff > Decimal::ZERO {
+                    Color::Green
+                } else if row.absolute_diff < Decimal::ZERO {
+                    Color::Red
+                } else {
+                    Color::White
+                }
+            }
+        };
+
+        row_cells.push(
+            Cell::new(format_decimal_pt_br(row.absolute_diff))
+                .set_alignment(CellAlignment::Right)
+                .fg(diff_color),
+        );
+
+        let pct_str = match row.percent_diff {
+            Some(pct) => {
+                let sign = if pct > Decimal::ZERO { "+" } else { "" };
+                format!("{sign}{pct}%")
+            }
+            None => "n/d".to_string(),
+        };
+
+        row_cells.push(
+            Cell::new(pct_str)
+                .set_alignment(CellAlignment::Right)
+                .fg(diff_color),
+        );
+
+        table.add_row(row_cells);
+    }
+
+    if report.rows.len() > 1 && !month_totals.is_empty() {
+        let mut total_row = Row::new();
+        total_row.add_cell(Cell::new("TOTAL"));
+        total_row.add_cell(Cell::new("-").set_alignment(CellAlignment::Center));
+
+        for total in &month_totals {
+            total_row.add_cell(
+                Cell::new(format_decimal_pt_br(*total)).set_alignment(CellAlignment::Right),
+            );
+        }
+
+        let (total_diff, total_pct) = if month_totals.len() >= 2 {
+            let prev = month_totals[month_totals.len() - 2];
+            let curr = month_totals[month_totals.len() - 1];
+            let diff = curr - prev;
+            let pct = if prev > Decimal::ZERO {
+                let p = (diff / prev) * Decimal::from(100);
+                Some(p.round_dp(2))
+            } else {
+                None
+            };
+            (diff, pct)
+        } else {
+            (Decimal::ZERO, None)
+        };
+
+        total_row.add_cell(
+            Cell::new(format_decimal_pt_br(total_diff)).set_alignment(CellAlignment::Right),
+        );
+
+        let total_pct_str = match total_pct {
+            Some(pct) => {
+                let sign = if pct > Decimal::ZERO { "+" } else { "" };
+                format!("{sign}{pct}%")
+            }
+            None => "n/d".to_string(),
+        };
+        total_row.add_cell(Cell::new(total_pct_str).set_alignment(CellAlignment::Right));
+
+        table.add_row(total_row);
+    }
 
     println!("{table}");
 }

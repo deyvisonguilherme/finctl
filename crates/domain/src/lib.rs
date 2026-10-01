@@ -10,7 +10,10 @@ pub use account::Account;
 pub use category::Category;
 pub use errors::DomainError;
 pub use money::{format_decimal_pt_br, Money};
-pub use report::{CategoryReportItem, CategoryReportSummary, MonthlyReportItem};
+pub use report::{
+    CategoryComparisonReport, CategoryComparisonRow, CategoryReportItem, CategoryReportSummary,
+    MonthlyReportItem,
+};
 pub use transaction::Transaction;
 pub use types::{
     AccountId, AccountKind, AttachmentId, BudgetId, CardInvoiceId, CategoryId, RecurringRuleId,

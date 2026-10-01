@@ -1,11 +1,12 @@
 use crate::errors::StorageError;
 use chrono::NaiveDate;
 use domain::{
-    AccountId, CategoryId, CategoryReportItem, CategoryReportSummary, Money, MonthlyReportItem,
-    TransactionKind, UserId,
+    AccountId, CategoryComparisonReport, CategoryComparisonRow, CategoryId, CategoryReportItem,
+    CategoryReportSummary, Money, MonthlyReportItem, TransactionKind, UserId,
 };
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Default)]
@@ -25,6 +26,17 @@ pub struct CategoryReportFilter {
     pub account_id: Option<AccountId>,
     pub kind: Option<TransactionKind>,
     pub depth: u32,
+    pub include_pending: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CategoryCompareFilter {
+    pub user_id: UserId,
+    pub months: Vec<String>,
+    pub from_date: NaiveDate,
+    pub to_date: NaiveDate,
+    pub account_id: Option<AccountId>,
+    pub kind: Option<TransactionKind>,
     pub include_pending: bool,
 }
 
@@ -257,6 +269,113 @@ impl ReportRepository {
             kind: filter.kind,
             total_amount: total_money,
             items,
+        })
+    }
+
+    pub async fn category_comparison(
+        pool: &PgPool,
+        filter: CategoryCompareFilter,
+    ) -> Result<CategoryComparisonReport, StorageError> {
+        let kind_str = filter.kind.map(|k| k.as_str().to_string());
+
+        let rows = sqlx::query(
+            r#"
+            SELECT 
+                TO_CHAR(t.date, 'YYYY-MM') AS month_str,
+                c.name AS category_name,
+                c.kind AS category_kind,
+                COALESCE(SUM(t.amount), 0) AS total_amount
+            FROM transactions t
+            JOIN categories c ON c.id = t.category_id
+            WHERE t.user_id = $1
+              AND t.transfer_id IS NULL
+              AND t.date >= $2
+              AND t.date <= $3
+              AND ($4::UUID IS NULL OR t.account_id = $4)
+              AND ($5::TEXT IS NULL OR t.kind = $5)
+              AND ($6::BOOLEAN = TRUE OR t.status = 'paid')
+            GROUP BY month_str, c.name, c.kind
+            ORDER BY c.name ASC, month_str ASC
+            "#,
+        )
+        .bind(filter.user_id.as_uuid())
+        .bind(filter.from_date)
+        .bind(filter.to_date)
+        .bind(filter.account_id.map(|id| id.as_uuid()))
+        .bind(kind_str)
+        .bind(filter.include_pending)
+        .fetch_all(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        // Map: (CategoryName, Kind) -> Map(Month -> Decimal)
+        let mut category_map: BTreeMap<(String, TransactionKind), BTreeMap<String, Decimal>> =
+            BTreeMap::new();
+
+        for row in rows {
+            let month_str: String = row.try_get("month_str").map_err(StorageError::Database)?;
+            let cat_name: String = row
+                .try_get("category_name")
+                .map_err(StorageError::Database)?;
+            let kind_str: String = row
+                .try_get("category_kind")
+                .map_err(StorageError::Database)?;
+            let total_dec: Decimal = row
+                .try_get("total_amount")
+                .map_err(StorageError::Database)?;
+
+            let kind = kind_str.parse::<TransactionKind>().map_err(|e| {
+                StorageError::Conversion(format!("Tipo de transação inválido '{kind_str}': {e}"))
+            })?;
+
+            category_map
+                .entry((cat_name, kind))
+                .or_default()
+                .insert(month_str, total_dec);
+        }
+
+        let mut rows_out = Vec::new();
+        for ((cat_name, kind), month_values) in category_map {
+            let mut monthly_amounts = Vec::new();
+            let mut amounts_dec = Vec::new();
+
+            for m in &filter.months {
+                let dec = month_values.get(m).copied().unwrap_or(Decimal::ZERO);
+                let money = Money::from_decimal_non_negative(dec).map_err(|e| {
+                    StorageError::Conversion(format!("Valor inválido para quantia: {e}"))
+                })?;
+                monthly_amounts.push((m.clone(), money));
+                amounts_dec.push(dec);
+            }
+
+            // Calculate diff between the last month and previous month (or first and last if 2)
+            let (absolute_diff, percent_diff) = if amounts_dec.len() >= 2 {
+                let prev = amounts_dec[amounts_dec.len() - 2];
+                let curr = amounts_dec[amounts_dec.len() - 1];
+                let abs_diff = curr - prev;
+                let pct_diff = if prev > Decimal::ZERO {
+                    let pct = (abs_diff / prev) * Decimal::from(100);
+                    Some(pct.round_dp(2))
+                } else {
+                    None // Base zero: n/d
+                };
+                (abs_diff, pct_diff)
+            } else {
+                (Decimal::ZERO, None)
+            };
+
+            rows_out.push(CategoryComparisonRow {
+                category_name: cat_name,
+                kind,
+                monthly_amounts,
+                absolute_diff,
+                percent_diff,
+            });
+        }
+
+        Ok(CategoryComparisonReport {
+            months: filter.months,
+            rows: rows_out,
         })
     }
 }

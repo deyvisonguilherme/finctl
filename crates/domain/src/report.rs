@@ -29,3 +29,18 @@ pub struct CategoryReportSummary {
     pub total_amount: Money,
     pub items: Vec<CategoryReportItem>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CategoryComparisonRow {
+    pub category_name: String,
+    pub kind: TransactionKind,
+    pub monthly_amounts: Vec<(String, Money)>,
+    pub absolute_diff: Decimal,
+    pub percent_diff: Option<Decimal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CategoryComparisonReport {
+    pub months: Vec<String>,
+    pub rows: Vec<CategoryComparisonRow>,
+}

@@ -8,7 +8,8 @@ pub use account_service::AccountService;
 pub use balance_service::{AccountBalance, BalanceReport, BalanceService};
 pub use category_service::{CategoryItem, CategoryService};
 pub use report_service::{
-    parse_month_bounds, CategoryReportInput, CompareReportInput, MonthlyReportInput, ReportService,
+    parse_month_bounds, CategoryReportInput, CompareCategoriesInput, CompareReportInput,
+    MonthlyReportInput, ReportService,
 };
 pub use transaction_service::{
     CreateTransactionInput, EditTransactionInput, ListTransactionsInput, TransactionService,

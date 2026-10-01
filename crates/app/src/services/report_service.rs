@@ -1,8 +1,13 @@
 use crate::errors::AppError;
 use chrono::{Datelike, Local, NaiveDate};
-use domain::{CategoryReportSummary, MonthlyReportItem, TransactionKind, UserId};
+use domain::{
+    CategoryComparisonReport, CategoryReportSummary, MonthlyReportItem, TransactionKind, UserId,
+};
 use sqlx::PgPool;
-use storage::{AccountRepository, CategoryReportFilter, MonthlyReportFilter, ReportRepository};
+use storage::{
+    AccountRepository, CategoryCompareFilter, CategoryReportFilter, MonthlyReportFilter,
+    ReportRepository,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct MonthlyReportInput {
@@ -30,6 +35,16 @@ pub struct CompareReportInput {
     pub user_id: UserId,
     pub months: Option<Vec<String>>,
     pub last_n: Option<u32>,
+    pub account_query: Option<String>,
+    pub include_pending: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CompareCategoriesInput {
+    pub user_id: UserId,
+    pub months: Option<Vec<String>>,
+    pub last_n: Option<u32>,
+    pub kind: Option<TransactionKind>,
     pub account_query: Option<String>,
     pub include_pending: bool,
 }
@@ -172,7 +187,6 @@ impl<'a> ReportService<'a> {
             let current_year = today.year();
             let current_month = today.month();
 
-            // Calculate start month: (last_n - 1) months ago
             let total_months = current_year * 12 + (current_month as i32 - 1);
             let start_total_months = total_months - (last_n as i32 - 1);
             let start_year = start_total_months / 12;
@@ -201,12 +215,98 @@ impl<'a> ReportService<'a> {
 
         let mut items = ReportRepository::monthly_summary(self.pool, filter).await?;
 
-        // If specific months were requested, filter to only those months
         if let Some(ref months) = input.months {
             items.retain(|item| months.contains(&item.month));
         }
 
         Ok(items)
+    }
+
+    pub async fn compare_categories(
+        &self,
+        input: CompareCategoriesInput,
+    ) -> Result<CategoryComparisonReport, AppError> {
+        let account_id = if let Some(ref acc_q) = input.account_query {
+            let acc = AccountRepository::find_by_id_or_name(self.pool, input.user_id, acc_q)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Conta '{acc_q}' não encontrada.")))?;
+            Some(acc.id)
+        } else {
+            None
+        };
+
+        let (months_list, from_date, to_date) = if let Some(mut months) = input.months {
+            if months.is_empty() {
+                return Err(AppError::Validation(
+                    "Pelo menos um mês deve ser especificado para comparação.".to_string(),
+                ));
+            }
+            months.sort();
+            months.dedup();
+
+            let mut min_date = NaiveDate::MAX;
+            let mut max_date = NaiveDate::MIN;
+
+            for m in &months {
+                let (start, end) = parse_month_bounds(m)?;
+                if start < min_date {
+                    min_date = start;
+                }
+                if end > max_date {
+                    max_date = end;
+                }
+            }
+
+            (months, min_date, max_date)
+        } else {
+            let last_n = input.last_n.unwrap_or(2);
+            if last_n == 0 {
+                return Err(AppError::Validation(
+                    "O número de meses deve ser maior que 0.".to_string(),
+                ));
+            }
+
+            let today = Local::now().date_naive();
+            let current_year = today.year();
+            let current_month = today.month();
+
+            let total_months = current_year * 12 + (current_month as i32 - 1);
+            let start_total_months = total_months - (last_n as i32 - 1);
+
+            let mut months = Vec::with_capacity(last_n as usize);
+            let mut min_date = NaiveDate::MAX;
+            let mut max_date = NaiveDate::MIN;
+
+            for i in 0..last_n {
+                let m_total = start_total_months + i as i32;
+                let y = m_total / 12;
+                let m = (m_total % 12 + 1) as u32;
+                let m_str = format!("{y:04}-{m:02}");
+                let (start, end) = parse_month_bounds(&m_str)?;
+                if start < min_date {
+                    min_date = start;
+                }
+                if end > max_date {
+                    max_date = end;
+                }
+                months.push(m_str);
+            }
+
+            (months, min_date, max_date)
+        };
+
+        let filter = CategoryCompareFilter {
+            user_id: input.user_id,
+            months: months_list,
+            from_date,
+            to_date,
+            account_id,
+            kind: input.kind,
+            include_pending: input.include_pending,
+        };
+
+        let report = ReportRepository::category_comparison(self.pool, filter).await?;
+        Ok(report)
     }
 }
 

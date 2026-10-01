@@ -199,13 +199,13 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Período sem lançamentos mostra mensagem amigável, não erro
 - **Notas:** `finctl report categories` implementado com suporte a `--month`, `--kind`, `--depth 1|2`, `--account`, `--include-pending`, saídas formatadas (table, json, csv), mensagem amigável para períodos vazios e soma correta de percentuais com linha de TOTAL.
 
-### [ ] F2-04 — `finctl report compare`
+### [x] F2-04 — `finctl report compare`
 - **Depende de:** F2-01
 - **Escopo:** `finctl report compare --months 2026-08,2026-09` ou `--last N`; mostra por categoria o valor de cada mês e a variação absoluta e percentual.
 - **Critérios de aceite:**
   - Variação com base zero não gera divisão por zero (exibe `n/d`)
   - Suporta `--format json`
-- **Notas:**
+- **Notas:** `finctl report compare` implementado com suporte a `--months` e `--last N`, cálculo de variação absoluta e percentual (com exibição segura de `n/d` em base zero sem divisão por zero), e saída em table/json/csv com destaque de cores. Testes de integração cobrem cenários com variação e base zero.
 
 ### [ ] F2-05 — Exportação para arquivo
 - **Depende de:** F1-04

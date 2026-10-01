@@ -57,7 +57,9 @@ define_id!(CardInvoiceId);
 define_id!(TagId);
 define_id!(AttachmentId);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionStatus {
     #[default]
@@ -101,7 +103,7 @@ impl fmt::Display for TransactionStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionKind {
     Income,
@@ -144,7 +146,7 @@ impl fmt::Display for TransactionKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AccountKind {
     Checking,
