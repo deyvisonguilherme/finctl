@@ -133,12 +133,12 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Usuário pode pular com `--no-seed`
 - **Notas:** `finctl init` implementado com execução de migrations e seed de categorias e subcategorias padrão de receitas e despesas de forma idempotente e suporte a flag `--no-seed`.
 
-### [ ] F1-08 — Documentação do MVP
+### [x] F1-08 — Documentação do MVP
 - **Depende de:** F1-01 a F1-07
 - **Escopo:** `README.md` com instalação, configuração, exemplos de uso de todos os comandos do MVP; `docs/specs/` atualizado.
 - **Critérios de aceite:**
   - Um novo usuário consegue subir o banco, migrar e registrar o primeiro lançamento seguindo apenas o README
-- **Notas:**
+- **Notas:** `README.md` completo com instruções de instalação, Docker/Podman, inicialização, exemplos de todos os comandos CLI e documentação em `docs/specs/mvp.md`.
 
 ---
 
