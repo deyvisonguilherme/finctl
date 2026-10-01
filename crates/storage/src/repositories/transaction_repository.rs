@@ -414,6 +414,21 @@ impl TransactionRepository {
 
         Ok(res.rows_affected())
     }
+
+    pub async fn delete_by_transfer_id(
+        pool: &PgPool,
+        user_id: UserId,
+        transfer_id: Uuid,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query("DELETE FROM transactions WHERE user_id = $1 AND transfer_id = $2")
+            .bind(user_id.as_uuid())
+            .bind(transfer_id)
+            .execute(pool)
+            .await
+            .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected())
+    }
 }
 
 fn map_transaction_row(row: sqlx::postgres::PgRow) -> Result<Transaction, StorageError> {

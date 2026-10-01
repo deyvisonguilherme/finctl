@@ -289,14 +289,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
 
 ## Fase 4 — Contas avançadas
 
-### [ ] F4-01 — Transferências entre contas
+### [x] F4-01 — Transferências entre contas
 - **Depende de:** F2-00, F1-06
 - **Escopo:** `finctl transfer add --from A --to B --amount V [--date]` cria duas linhas em uma transação SQL (despesa na origem, receita no destino) com o mesmo `transfer_id`, usando a categoria de sistema "Transferência" (`is_system = true`, uma por tipo). `tx rm` de uma perna remove a outra.
 - **Critérios de aceite:**
   - Origem e destino devem ser contas diferentes
   - Saldos das contas refletem a transferência; relatórios de receita/despesa não
   - `tx edit` em lançamento de transferência é bloqueado com mensagem orientando a refazer a transferência
-- **Notas:**
+- **Notas:** Implementado comando `finctl transfer add` com criação atômica das pernas de débito (origem) e crédito (destino) vinculadas pelo mesmo `transfer_id` e categorias de sistema "Transferência" e "Transferência (Receita)". Os saldos das contas refletem a movimentação, enquanto relatórios agregados e categorizados excluem lançamentos com `transfer_id IS NOT NULL`. A edição individual (`tx edit`) de qualquer perna é bloqueada por validação para preservar a integridade contábil, e a exclusão (`tx rm`) de uma perna remove automaticamente a contraparte vinculada. Testes de integração validam o fluxo completo, isolamento de relatórios e proteção contra edição.
 
 ### [ ] F4-02 — Cartão de crédito: modelo e faturas
 - **Depende de:** F4-01, F3-01

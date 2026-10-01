@@ -13,6 +13,7 @@ use commands::income::{handle_income_command, IncomeCommands};
 use commands::init::{handle_init_command, InitArgs};
 use commands::recurring::{handle_recurring_command, RecurringCommands};
 use commands::report::{handle_report_command, ReportCommands};
+use commands::transfer::{handle_transfer_command, TransferCommands};
 use commands::tx::{handle_tx_command, TxCommands};
 use domain::UserId;
 use std::process::ExitCode;
@@ -62,6 +63,12 @@ enum Commands {
     Expense {
         #[command(subcommand)]
         subcommand: ExpenseCommands,
+    },
+
+    /// Transferências entre contas
+    Transfer {
+        #[command(subcommand)]
+        subcommand: TransferCommands,
     },
 
     /// Consulta e gerenciamento de transações/lançamentos
@@ -200,6 +207,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_expense_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Transfer { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_transfer_command(subcommand, &pool, user_id).await
         }
         Some(Commands::Tx { subcommand }) => {
             let db_url = get_database_url()?;
