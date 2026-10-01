@@ -19,14 +19,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - `finctl --version` imprime a versão
 - **Notas:** Workspace Cargo inicializado com crates `domain`, `storage`, `app`, `cli`, rustfmt.toml e CI GitHub Actions configurados.
 
-### [ ] F0-02 — Ambiente de desenvolvimento com PostgreSQL
+### [x] F0-02 — Ambiente de desenvolvimento com PostgreSQL
 - **Depende de:** F0-01
 - **Escopo:** `docker-compose.yml` (compatível com Podman) com Postgres, `.env.example`, leitura de `DATABASE_URL`.
 - **Critérios de aceite:**
   - `docker compose up -d` (ou `podman compose up -d`) sobe o banco
   - `.env` é ignorado pelo git; `.env.example` documenta as variáveis
   - Binário falha com mensagem clara se `DATABASE_URL` estiver ausente
-- **Notas:**
+- **Notas:** `docker-compose.yml` criado com Postgres 16 Alpine, `.env.example` documentado e verificação de `DATABASE_URL` com código de saída 2 implementada.
 
 ### [ ] F0-03 — Conexão, pool e tratamento de erros
 - **Depende de:** F0-02
