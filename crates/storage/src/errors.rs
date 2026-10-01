@@ -16,4 +16,7 @@ pub enum StorageError {
 
     #[error("Registro duplicado ou conflito de chave única: {0}")]
     UniqueViolation(String),
+
+    #[error("Erro de conversão de dados: {0}")]
+    Conversion(String),
 }

@@ -8,8 +8,8 @@ pub mod test_helpers;
 pub use db::{create_pool, ping, run_migrations};
 pub use errors::StorageError;
 pub use repositories::{
-    AccountRepository, CategoryRepository, TransactionDetails, TransactionFilter,
-    TransactionRepository,
+    AccountRepository, CategoryReportFilter, CategoryRepository, MonthlyReportFilter,
+    ReportRepository, TransactionDetails, TransactionFilter, TransactionRepository,
 };
 
 #[cfg(feature = "test-helpers")]

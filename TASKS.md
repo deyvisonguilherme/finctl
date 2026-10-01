@@ -173,13 +173,13 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - `CHECK` garante coerência (`installment_number <= installment_total`, status válido)
 - **Notas:** Migration aditiva `20261001010000_schema_phases_2_to_4.sql` criada, cobrindo colunas em transactions/categories/accounts e novas tabelas para orçamentos, regras de recorrência, faturas de cartão, tags e anexos. Repositórios e entidades de domínio atualizados. Todos os testes unitários e de integração passaram com sucesso.
 
-### [ ] F2-01 — Camada de agregação (storage/app)
+### [x] F2-01 — Camada de agregação (storage/app)
 - **Depende de:** F2-00
 - **Escopo:** consultas e casos de uso reutilizáveis: totais por mês (receitas, despesas, saldo), totais por categoria (com opção de agregar subcategorias na categoria pai) e por período. Aplicam as regras transversais.
 - **Critérios de aceite:**
   - Testes de integração com dataset fixo cobrem: lançamentos `pending` ignorados, transferências excluídas, subcategorias agregadas
   - Consultas usam os índices existentes (verificar com `EXPLAIN` em ao menos um teste ou na descrição do PR)
-- **Notas:**
+- **Notas:** `ReportRepository` e `ReportService` criados com agregações mensais, por categoria (com suporte a profundidade 1 para rollup em categoria pai e profundidade 2) e comparação temporal. Testes de integração cobrem exclusão de transferências, filtro de transações pendentes, rollup hierárquico e validação do plano via EXPLAIN.
 
 ### [ ] F2-02 — `finctl report monthly`
 - **Depende de:** F2-01
