@@ -45,7 +45,7 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Nenhum uso de `f64` para dinheiro
 - **Notas:** `Money` com validações e formatação pt-BR, `TransactionKind`, `AccountKind` e IDs tipados (`AccountId`, `CategoryId`, `TransactionId`, `UserId`) implementados no `domain` com testes unitários cobrindo todos os critérios.
 
-### [ ] F0-05 — Primeira migration: accounts, categories, transactions
+### [x] F0-05 — Primeira migration: accounts, categories, transactions
 - **Depende de:** F0-03
 - **Escopo:** schema inicial conforme `AGENTS.md` (decisões D-01 e D-03).
   - `accounts` (id, [user_id], nome, tipo, saldo_inicial, created_at, updated_at)
@@ -57,7 +57,7 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - `finctl db migrate` aplica as migrations em banco vazio
   - Constraints impedem valor ≤ 0 e tipo inválido
   - Teste de integração com `testcontainers` valida o schema
-- **Notas:**
+- **Notas:** Migration inicial criada em `crates/storage/migrations`, comando `finctl db migrate` adicionado e testes de integração com `testcontainers` validando schema e constraints em banco PostgreSQL real.
 
 ### [ ] F0-06 — Infraestrutura de testes de integração
 - **Depende de:** F0-05

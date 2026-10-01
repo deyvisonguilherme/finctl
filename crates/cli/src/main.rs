@@ -25,6 +25,8 @@ enum Commands {
 enum DbCommands {
     /// Testa a conexão com o banco de dados
     Ping,
+    /// Aplica as migrações pendentes no banco de dados
+    Migrate,
 }
 
 pub fn get_database_url() -> Result<String, (String, u8)> {
@@ -55,6 +57,17 @@ async fn run() -> Result<(), (String, u8)> {
                     .map_err(|e| (e.to_string(), 2))?;
                 storage::ping(&pool).await.map_err(|e| (e.to_string(), 2))?;
                 println!("Conexão com o banco de dados realizada com sucesso!");
+                Ok(())
+            }
+            DbCommands::Migrate => {
+                let db_url = get_database_url()?;
+                let pool = storage::create_pool(&db_url)
+                    .await
+                    .map_err(|e| (e.to_string(), 2))?;
+                storage::run_migrations(&pool)
+                    .await
+                    .map_err(|e| (e.to_string(), 2))?;
+                println!("Migrações aplicadas com sucesso!");
                 Ok(())
             }
         },

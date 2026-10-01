@@ -19,3 +19,11 @@ pub async fn ping(pool: &PgPool) -> Result<(), StorageError> {
     })?;
     Ok(())
 }
+
+pub async fn run_migrations(pool: &PgPool) -> Result<(), StorageError> {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .map_err(|e| StorageError::Migration(format!("Falha ao aplicar migrations: {e}")))?;
+    Ok(())
+}
