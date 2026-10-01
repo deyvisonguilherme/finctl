@@ -1,7 +1,16 @@
 pub mod account;
 pub mod balance;
+pub mod budget;
+pub mod card;
 pub mod category;
 pub mod expense;
+pub mod export;
+pub mod import_cmd;
 pub mod income;
 pub mod init;
+pub mod reconcile;
+pub mod recurring;
+pub mod report;
+pub mod tag;
+pub mod transfer;
 pub mod tx;

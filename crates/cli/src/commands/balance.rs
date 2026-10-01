@@ -12,6 +12,10 @@ pub struct BalanceArgs {
     #[arg(short, long)]
     pub at: Option<String>,
 
+    /// Inclui lançamentos previstos (pendentes) no cálculo do saldo projetado
+    #[arg(long)]
+    pub projected: bool,
+
     /// Formato de saída (table, json, csv)
     #[arg(short, long, default_value_t = OutputFormat::Table)]
     pub format: OutputFormat,
@@ -36,7 +40,7 @@ pub async fn handle_balance_command(
     };
 
     let report = service
-        .get_balance(user_id, at_date)
+        .get_balance(user_id, at_date, args.projected)
         .await
         .map_err(|e| (format!("{e}"), 2))?;
 
@@ -86,8 +90,23 @@ fn print_balance_table(report: &BalanceReport) {
         return;
     }
 
-    if let Some(d) = report.as_of_date {
-        println!("Saldo consolidado até {}\n", d.format("%d/%m/%Y"));
+    let title = if report.projected {
+        if let Some(d) = report.as_of_date {
+            format!(
+                "Saldo projetado (inclui previstos) até {}\n",
+                d.format("%d/%m/%Y")
+            )
+        } else {
+            "Saldo projetado consolidado (inclui previstos)\n".to_string()
+        }
+    } else if let Some(d) = report.as_of_date {
+        format!("Saldo consolidado até {}\n", d.format("%d/%m/%Y"))
+    } else {
+        "".to_string()
+    };
+
+    if !title.is_empty() {
+        print!("{title}");
     }
 
     let mut table = Table::new();

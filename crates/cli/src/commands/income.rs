@@ -27,6 +27,10 @@ pub enum IncomeCommands {
         /// Descrição do lançamento
         #[arg(long = "desc", default_value = "")]
         description: String,
+
+        /// Registra a receita como prevista (pendente de realização)
+        #[arg(long)]
+        pending: bool,
     },
 }
 
@@ -44,6 +48,7 @@ pub async fn handle_income_command(
             amount,
             date,
             description,
+            pending,
         } => {
             let money = Money::parse(&amount).map_err(|e| (format!("{e}"), 1))?;
             let tx_date = if let Some(d) = date {
@@ -57,6 +62,12 @@ pub async fn handle_income_command(
                 Local::now().date_naive()
             };
 
+            let status = if pending {
+                domain::TransactionStatus::Pending
+            } else {
+                domain::TransactionStatus::Paid
+            };
+
             let tx = service
                 .create_transaction(CreateTransactionInput {
                     user_id,
@@ -66,6 +77,7 @@ pub async fn handle_income_command(
                     amount: money,
                     date: tx_date,
                     description,
+                    status: Some(status),
                 })
                 .await
                 .map_err(|e| match e {
@@ -75,9 +87,16 @@ pub async fn handle_income_command(
                     other => (format!("{other}"), 2),
                 })?;
 
+            let status_msg = if tx.status == domain::TransactionStatus::Pending {
+                " (prevista)"
+            } else {
+                ""
+            };
+
             println!(
-                "Receita de {} registrada com sucesso! (ID: {})",
+                "Receita de {}{} registrada com sucesso! (ID: {})",
                 tx.amount.format_pt_br(),
+                status_msg,
                 tx.id
             );
             Ok(())

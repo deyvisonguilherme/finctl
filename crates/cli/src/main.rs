@@ -4,10 +4,19 @@ pub mod format;
 use clap::{Parser, Subcommand};
 use commands::account::{handle_account_command, AccountCommands};
 use commands::balance::{handle_balance_command, BalanceArgs};
+use commands::budget::{handle_budget_command, BudgetCommands};
+use commands::card::{handle_card_command, CardCommands};
 use commands::category::{handle_category_command, CategoryCommands};
 use commands::expense::{handle_expense_command, ExpenseCommands};
+use commands::export::{handle_export_command, ExportCommands};
+use commands::import_cmd::{handle_import_command, ImportCommands};
 use commands::income::{handle_income_command, IncomeCommands};
 use commands::init::{handle_init_command, InitArgs};
+use commands::reconcile::{handle_reconcile_command, ReconcileArgs};
+use commands::recurring::{handle_recurring_command, RecurringCommands};
+use commands::report::{handle_report_command, ReportCommands};
+use commands::tag::{handle_tag_command, TagCommands};
+use commands::transfer::{handle_transfer_command, TransferCommands};
 use commands::tx::{handle_tx_command, TxCommands};
 use domain::UserId;
 use std::process::ExitCode;
@@ -59,14 +68,65 @@ enum Commands {
         subcommand: ExpenseCommands,
     },
 
+    /// Transferências entre contas
+    Transfer {
+        #[command(subcommand)]
+        subcommand: TransferCommands,
+    },
+
+    /// Gerenciamento de cartão de crédito e faturas
+    Card {
+        #[command(subcommand)]
+        subcommand: CardCommands,
+    },
+
     /// Consulta e gerenciamento de transações/lançamentos
     Tx {
         #[command(subcommand)]
         subcommand: TxCommands,
     },
 
+    /// Gerenciamento de orçamentos por categoria
+    Budget {
+        #[command(subcommand)]
+        subcommand: BudgetCommands,
+    },
+
+    /// Gerenciamento de regras de lançamentos recorrentes
+    Recurring {
+        #[command(subcommand)]
+        subcommand: RecurringCommands,
+    },
+
     /// Consulta de saldos consolidados por conta e total geral
     Balance(BalanceArgs),
+
+    /// Relatórios financeiros e comparativos
+    Report {
+        #[command(subcommand)]
+        subcommand: ReportCommands,
+    },
+
+    /// Exportação de dados para arquivos (CSV, JSON)
+    Export {
+        #[command(subcommand)]
+        subcommand: ExportCommands,
+    },
+
+    /// Importação de dados a partir de arquivos externos
+    Import {
+        #[command(subcommand)]
+        subcommand: ImportCommands,
+    },
+
+    /// Conciliação bancária de lançamentos com extrato CSV
+    Reconcile(ReconcileArgs),
+
+    /// Gerenciamento de tags para categorização transversal
+    Tag {
+        #[command(subcommand)]
+        subcommand: TagCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -166,6 +226,22 @@ async fn run() -> Result<(), (String, u8)> {
             let user_id = get_current_user_id();
             handle_expense_command(subcommand, &pool, user_id).await
         }
+        Some(Commands::Transfer { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_transfer_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Card { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_card_command(subcommand, &pool, user_id).await
+        }
         Some(Commands::Tx { subcommand }) => {
             let db_url = get_database_url()?;
             let pool = storage::create_pool(&db_url)
@@ -174,6 +250,22 @@ async fn run() -> Result<(), (String, u8)> {
             let user_id = get_current_user_id();
             handle_tx_command(subcommand, &pool, user_id).await
         }
+        Some(Commands::Budget { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_budget_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Recurring { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_recurring_command(&pool, user_id, subcommand).await
+        }
         Some(Commands::Balance(args)) => {
             let db_url = get_database_url()?;
             let pool = storage::create_pool(&db_url)
@@ -181,6 +273,46 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_balance_command(args, &pool, user_id).await
+        }
+        Some(Commands::Report { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_report_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Export { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_export_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Import { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_import_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Reconcile(args)) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_reconcile_command(&pool, user_id, args).await
+        }
+        Some(Commands::Tag { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_tag_command(subcommand, &pool, user_id).await
         }
     }
 }

@@ -69,6 +69,7 @@ async fn test_balance_calculation_and_at_date_filter() {
             amount: Money::new(dec!(3000.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
             description: "Salário".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -82,12 +83,16 @@ async fn test_balance_calculation_and_at_date_filter() {
             amount: Money::new(dec!(800.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 15).unwrap(),
             description: "Mercado".to_string(),
+            status: None,
         })
         .await
         .unwrap();
 
     // 4. Overall balance (no date filter)
-    let report_all = balance_service.get_balance(user_id, None).await.unwrap();
+    let report_all = balance_service
+        .get_balance(user_id, None, false)
+        .await
+        .unwrap();
     assert_eq!(report_all.accounts.len(), 2);
 
     let nubank_bal = report_all
@@ -115,7 +120,7 @@ async fn test_balance_calculation_and_at_date_filter() {
     // 5. Balance at 2026-10-10 (before the expense on Oct 15)
     let at_oct_10 = NaiveDate::from_ymd_opt(2026, 10, 10).unwrap();
     let report_oct_10 = balance_service
-        .get_balance(user_id, Some(at_oct_10))
+        .get_balance(user_id, Some(at_oct_10), false)
         .await
         .unwrap();
 

@@ -58,6 +58,7 @@ async fn test_create_income_and_expense_transactions() {
             amount: Money::new(dec!(89.90)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
             description: "Compras da semana".to_string(),
+            status: None,
         })
         .await
         .expect("registrar despesa");
@@ -75,6 +76,7 @@ async fn test_create_income_and_expense_transactions() {
             amount: Money::new(dec!(5000.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
             description: "Salário mensal".to_string(),
+            status: None,
         })
         .await
         .expect("registrar receita");
@@ -92,6 +94,7 @@ async fn test_create_income_and_expense_transactions() {
             amount: Money::new(dec!(50.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 6).unwrap(),
             description: "Invalido".to_string(),
+            status: None,
         })
         .await;
 
@@ -161,6 +164,7 @@ async fn test_transaction_list_filters() {
             amount: Money::new(dec!(50.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 9, 15).unwrap(),
             description: "Almoço Setembro".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -174,6 +178,7 @@ async fn test_transaction_list_filters() {
             amount: Money::new(dec!(100.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 2).unwrap(),
             description: "Jantar Outubro".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -187,6 +192,7 @@ async fn test_transaction_list_filters() {
             amount: Money::new(dec!(3000.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
             description: "Salário Outubro".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -281,6 +287,7 @@ async fn test_transaction_edit_and_delete() {
             amount: Money::new(dec!(50.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
             description: "Original".to_string(),
+            status: None,
         })
         .await
         .unwrap();

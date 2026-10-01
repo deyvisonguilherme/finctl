@@ -3,17 +3,14 @@
 Sistema de controle financeiro pessoal (receitas e despesas) em **Rust (CLI) + PostgreSQL**.
 Este arquivo orienta agentes de IA (Antigravity CLI / `agy`) e colaboradores humanos.
 
-## Como trabalhar neste repositório (GitFlow)
+## Como trabalhar neste repositório
 
 1. Leia `TASKS.md` e escolha **uma** task com status `[ ]` cujas dependências estejam concluídas.
-2. Certifique-se de estar na branch `develop` atualizada (`git checkout develop && git pull origin develop`).
-3. Crie a branch de feature a partir de `develop`: `feat/<id-da-task>-<slug>` ou `feature/<id-da-task>-<slug>` (ex.: `feat/F2-01-monthly-summary`).
-4. Marque a task como `[~]` (em andamento) em `TASKS.md` antes de começar.
-5. Implemente apenas o escopo da task. Se achar algo fora do escopo, registre em "Backlog / Ideias" no `TASKS.md` e siga em frente.
-6. Antes de concluir, rode o checklist de qualidade (abaixo).
-7. Faça o commit seguindo Conventional Commits, mergeie a branch de feature na `develop` e remova a branch de feature local/remota se aplicável.
-8. Marque a task como `[x]`, preencha a linha de **Notas** se houver decisão relevante e faça o commit.
-9. Releases e Hotfixes seguem o fluxo padrão GitFlow (`release/vX.Y.Z` ou `hotfix/vX.Y.Z` mergeados em `main` com tag e em `develop`).
+2. Crie a branch `feat/<id-da-task>-<slug>` (ex.: `feat/F1-03-income-add`).
+3. Marque a task como `[~]` (em andamento) em `TASKS.md` antes de começar.
+4. Implemente apenas o escopo da task. Se achar algo fora do escopo, registre em "Backlog / Ideias" no `TASKS.md` e siga em frente.
+5. Antes de concluir, rode o checklist de qualidade (abaixo).
+6. Marque a task como `[x]`, preencha a linha de **Notas** se houver decisão relevante e faça o commit.
 
 Nunca trabalhe em duas tasks ao mesmo tempo, a menos que sejam independentes e solicitadas explicitamente.
 
@@ -119,3 +116,12 @@ Se uma task depender de uma destas decisões, siga o padrão sugerido e anote em
 | D-01 | Uso pessoal ou multiusuário | Incluir `user_id` desde a Fase 0 para evitar migration dolorosa depois |
 | D-02 | Saldo calculado ou armazenado | Calculado via `SUM`; otimizar só se ficar lento |
 | D-03 | Valor com sinal ou campo `tipo` | Valor positivo + `tipo` |
+| D-04 | Compra no cartão de crédito | Despesa na data da compra; pagamento da fatura é transferência |
+| D-05 | Dia 29–31 em mês mais curto (recorrências e parcelas) | Usar o último dia do mês |
+
+## Regras transversais de consulta (Fases 2–4)
+
+- Saldo e relatórios consideram apenas lançamentos `status = 'paid'` por padrão.
+- Relatórios de receita/despesa excluem lançamentos com `transfer_id` preenchido; o saldo das contas os inclui.
+- Comandos que geram dados (`recurring run`, `import csv`) devem ser idempotentes.
+- Operações compostas (transferência, parcelamento, pagamento de fatura) rodam em uma única transação SQL.

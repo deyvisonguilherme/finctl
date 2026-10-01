@@ -14,3 +14,7 @@ rust_decimal = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+csv = { workspace = true }
+toml = { workspace = true }
+sha2 = { workspace = true }
+
