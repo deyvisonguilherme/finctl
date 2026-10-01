@@ -326,6 +326,94 @@ impl TransactionRepository {
 
         Ok(res.rows_affected() > 0)
     }
+
+    pub async fn create_batch(pool: &PgPool, txs: &[Transaction]) -> Result<(), StorageError> {
+        let mut db_tx = pool.begin().await.map_err(StorageError::Database)?;
+        for tx in txs {
+            sqlx::query(
+                r#"
+                INSERT INTO transactions (
+                    id, user_id, account_id, category_id, kind, amount, date, description,
+                    status, transfer_id, installment_group_id, installment_number, installment_total,
+                    recurring_rule_id, import_hash, reconciled_at, created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                "#,
+            )
+            .bind(tx.id.as_uuid())
+            .bind(tx.user_id.as_uuid())
+            .bind(tx.account_id.as_uuid())
+            .bind(tx.category_id.as_uuid())
+            .bind(tx.kind.as_str())
+            .bind(tx.amount.as_decimal())
+            .bind(tx.date)
+            .bind(&tx.description)
+            .bind(tx.status.as_str())
+            .bind(tx.transfer_id)
+            .bind(tx.installment_group_id)
+            .bind(tx.installment_number.map(|n| n as i32))
+            .bind(tx.installment_total.map(|t| t as i32))
+            .bind(tx.recurring_rule_id)
+            .bind(&tx.import_hash)
+            .bind(tx.reconciled_at)
+            .bind(tx.created_at)
+            .bind(tx.updated_at)
+            .execute(&mut *db_tx)
+            .await
+            .map_err(StorageError::Database)?;
+        }
+        db_tx.commit().await.map_err(StorageError::Database)?;
+        Ok(())
+    }
+
+    pub async fn find_by_installment_group(
+        pool: &PgPool,
+        user_id: UserId,
+        group_id: Uuid,
+    ) -> Result<Vec<Transaction>, StorageError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT 
+                id, user_id, account_id, category_id, kind, amount, date, description,
+                status, transfer_id, installment_group_id, installment_number, installment_total,
+                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at
+            FROM transactions
+            WHERE user_id = $1 AND installment_group_id = $2
+            ORDER BY installment_number ASC, date ASC
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(group_id)
+        .fetch_all(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        let mut list = Vec::with_capacity(rows.len());
+        for r in rows {
+            list.push(map_transaction_row(r)?);
+        }
+        Ok(list)
+    }
+
+    pub async fn delete_pending_by_installment_group(
+        pool: &PgPool,
+        user_id: UserId,
+        group_id: Uuid,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            r#"
+            DELETE FROM transactions
+            WHERE user_id = $1 AND installment_group_id = $2 AND status = 'pending'
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected())
+    }
 }
 
 fn map_transaction_row(row: sqlx::postgres::PgRow) -> Result<Transaction, StorageError> {

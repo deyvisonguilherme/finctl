@@ -276,14 +276,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   Persistent=true
   ```
 
-### [ ] F3-05 — Parcelamentos
+### [x] F3-05 — Parcelamentos
 - **Depende de:** F3-01
 - **Escopo:** `expense add --installments N` (com valor total ou `--installment-amount`) gera N lançamentos `pending`, com datas mensais e mesmo `installment_group_id`. Centavos de arredondamento vão para a primeira parcela. `tx list --group <id>`, `tx edit --group` e `tx rm --group` atuam só nas parcelas ainda `pending`.
 - **Critérios de aceite:**
   - A soma das parcelas é exatamente o valor total
   - Dia 29–31 segue a regra D-05
   - Parcelas já pagas nunca são alteradas ou removidas pelos comandos de grupo
-- **Notas:**
+- **Notas:** Suporte a compras parceladas implementado via `expense add --installments N` (com valor total ou `--installment-amount`). As parcelas são criadas em lote com status `pending`, vinculadas pelo mesmo `installment_group_id` e numeradas sequencialmente (`installment_number` e `installment_total`). A divisão de valores direciona eventuais centavos de arredondamento para a 1ª parcela garantindo soma exata, e datas respeitam o ajuste para meses mais curtos (D-05). Os comandos `finctl tx list --group <id>`, `finctl tx edit --group <id>` e `finctl tx rm --group <id>` atuam estritamente sobre as parcelas ainda pendentes, preservando parcelas pagas intactas. Testes de integração cobrem criação, divisão, filtros e operações em grupo.
 
 ---
 

@@ -18,7 +18,7 @@ pub use report::{
     CategoryComparisonReport, CategoryComparisonRow, CategoryReportItem, CategoryReportSummary,
     MonthlyReportItem,
 };
-pub use transaction::Transaction;
+pub use transaction::{calculate_installment_dates, split_installments, Transaction};
 pub use types::{
     AccountId, AccountKind, AttachmentId, BudgetId, CardInvoiceId, CategoryId, RecurringFrequency,
     RecurringRuleId, TagId, TransactionId, TransactionKind, TransactionStatus, UserId,

@@ -3,7 +3,7 @@ use crate::money::Money;
 use crate::types::{
     AccountId, CategoryId, TransactionId, TransactionKind, TransactionStatus, UserId,
 };
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -133,6 +133,52 @@ impl Transaction {
     }
 }
 
+pub fn split_installments(
+    total_amount: Money,
+    installments: u32,
+) -> Result<Vec<Money>, DomainError> {
+    if installments < 2 {
+        return Err(DomainError::Validation(
+            "O número de parcelas deve ser no mínimo 2.".to_string(),
+        ));
+    }
+    let total_dec = total_amount.as_decimal();
+    let n = rust_decimal::Decimal::from(installments);
+    let base_dec =
+        (total_dec / n).round_dp_with_strategy(2, rust_decimal::RoundingStrategy::ToZero);
+    let remainder = total_dec - (base_dec * n);
+
+    let first_dec = base_dec + remainder;
+    let first = Money::new(first_dec)?;
+    let base = Money::new(base_dec)?;
+
+    let mut result = Vec::with_capacity(installments as usize);
+    result.push(first);
+    for _ in 1..installments {
+        result.push(base);
+    }
+    Ok(result)
+}
+
+pub fn calculate_installment_dates(start_date: NaiveDate, installments: u32) -> Vec<NaiveDate> {
+    let mut dates = Vec::with_capacity(installments as usize);
+    let start_dom = start_date.day();
+    let start_year = start_date.year();
+    let start_month0 = start_date.month0() as i32;
+
+    for i in 0..installments {
+        let total_month = start_month0 + i as i32;
+        let year = start_year + (total_month / 12);
+        let month = (total_month % 12 + 1) as u32;
+        let dim = crate::recurring::days_in_month(year, month);
+        let day = start_dom.min(dim);
+        if let Some(d) = NaiveDate::from_ymd_opt(year, month, day) {
+            dates.push(d);
+        }
+    }
+    dates
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +245,34 @@ mod tests {
         // Trying to mark as paid again fails
         let err = tx.mark_as_paid(None).unwrap_err();
         assert!(matches!(err, DomainError::Validation(_)));
+    }
+
+    #[test]
+    fn test_split_installments_rounding_remainder_to_first() {
+        // R$ 100,00 in 3 installments -> 33.34, 33.33, 33.33
+        let total = Money::new(dec!(100.00)).unwrap();
+        let parts = split_installments(total, 3).unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0], Money::new(dec!(33.34)).unwrap());
+        assert_eq!(parts[1], Money::new(dec!(33.33)).unwrap());
+        assert_eq!(parts[2], Money::new(dec!(33.33)).unwrap());
+
+        let sum: rust_decimal::Decimal = parts.iter().map(|p| p.as_decimal()).sum();
+        assert_eq!(sum, dec!(100.00));
+    }
+
+    #[test]
+    fn test_calculate_installment_dates_d05() {
+        let start = NaiveDate::from_ymd_opt(2026, 1, 31).unwrap();
+        let dates = calculate_installment_dates(start, 4);
+        assert_eq!(
+            dates,
+            vec![
+                NaiveDate::from_ymd_opt(2026, 1, 31).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 2, 28).unwrap(), // Feb 28
+                NaiveDate::from_ymd_opt(2026, 3, 31).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(), // Apr 30
+            ]
+        );
     }
 }
