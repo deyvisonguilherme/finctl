@@ -181,14 +181,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Consultas usam os índices existentes (verificar com `EXPLAIN` em ao menos um teste ou na descrição do PR)
 - **Notas:** `ReportRepository` e `ReportService` criados com agregações mensais, por categoria (com suporte a profundidade 1 para rollup em categoria pai e profundidade 2) e comparação temporal. Testes de integração cobrem exclusão de transferências, filtro de transações pendentes, rollup hierárquico e validação do plano via EXPLAIN.
 
-### [ ] F2-02 — `finctl report monthly`
+### [x] F2-02 — `finctl report monthly`
 - **Depende de:** F2-01
 - **Escopo:** `finctl report monthly [--month YYYY-MM | --year YYYY] [--account X] [--include-pending]` mostra receitas, despesas e saldo do período (por mês, quando for ano).
 - **Critérios de aceite:**
   - Padrão: mês corrente
   - Suporta `--format table|json|csv`
   - Valores conferem com cálculo manual em teste
-- **Notas:**
+- **Notas:** `finctl report monthly` implementado com suporte a `--month`, `--year`, `--account`, `--include-pending`, formatos table/json/csv e cálculo de taxa de poupança (savings rate). Testes de integração cobrem múltiplos cenários.
 
 ### [ ] F2-03 — `finctl report categories`
 - **Depende de:** F2-01

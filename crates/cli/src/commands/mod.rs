@@ -4,4 +4,5 @@ pub mod category;
 pub mod expense;
 pub mod income;
 pub mod init;
+pub mod report;
 pub mod tx;

@@ -8,6 +8,7 @@ use commands::category::{handle_category_command, CategoryCommands};
 use commands::expense::{handle_expense_command, ExpenseCommands};
 use commands::income::{handle_income_command, IncomeCommands};
 use commands::init::{handle_init_command, InitArgs};
+use commands::report::{handle_report_command, ReportCommands};
 use commands::tx::{handle_tx_command, TxCommands};
 use domain::UserId;
 use std::process::ExitCode;
@@ -67,6 +68,12 @@ enum Commands {
 
     /// Consulta de saldos consolidados por conta e total geral
     Balance(BalanceArgs),
+
+    /// Relatórios financeiros e comparativos
+    Report {
+        #[command(subcommand)]
+        subcommand: ReportCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -181,6 +188,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_balance_command(args, &pool, user_id).await
+        }
+        Some(Commands::Report { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_report_command(&pool, user_id, subcommand).await
         }
     }
 }
