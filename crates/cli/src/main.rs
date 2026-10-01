@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use commands::account::{handle_account_command, AccountCommands};
 use commands::balance::{handle_balance_command, BalanceArgs};
 use commands::budget::{handle_budget_command, BudgetCommands};
+use commands::card::{handle_card_command, CardCommands};
 use commands::category::{handle_category_command, CategoryCommands};
 use commands::expense::{handle_expense_command, ExpenseCommands};
 use commands::export::{handle_export_command, ExportCommands};
@@ -69,6 +70,12 @@ enum Commands {
     Transfer {
         #[command(subcommand)]
         subcommand: TransferCommands,
+    },
+
+    /// Gerenciamento de cartão de crédito e faturas
+    Card {
+        #[command(subcommand)]
+        subcommand: CardCommands,
     },
 
     /// Consulta e gerenciamento de transações/lançamentos
@@ -215,6 +222,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_transfer_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Card { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_card_command(subcommand, &pool, user_id).await
         }
         Some(Commands::Tx { subcommand }) => {
             let db_url = get_database_url()?;

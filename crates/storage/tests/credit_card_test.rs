@@ -170,4 +170,85 @@ async fn test_credit_card_model_and_invoice_attribution() {
         .unwrap();
     // 2026-05, 2026-06, 2026-07, 2026-08, 2026-09 -> 5 invoices total
     assert_eq!(updated_invoices.len(), 5);
+
+    // 4. Test CardService::list_invoices
+    let card_service = app::CardService::new(pool);
+    let invoice_summaries = card_service
+        .list_invoices(user_id, &card.name)
+        .await
+        .unwrap();
+    assert_eq!(invoice_summaries.len(), 5);
+
+    // May invoice had R$ 100,00 (closing day) + R$ 50,00 = R$ 150,00 total (2 items)
+    let summary_may = invoice_summaries
+        .iter()
+        .find(|s| s.invoice.month == "2026-05")
+        .unwrap();
+    assert_eq!(summary_may.total_amount, Money::new(dec!(150.00)).unwrap());
+    assert_eq!(summary_may.item_count, 2);
+
+    // June invoice had R$ 150,00 (1 item)
+    let summary_jun = invoice_summaries
+        .iter()
+        .find(|s| s.invoice.month == "2026-06")
+        .unwrap();
+    assert_eq!(summary_jun.total_amount, Money::new(dec!(150.00)).unwrap());
+    assert_eq!(summary_jun.item_count, 1);
+
+    // 5. Test CardService::show_invoice
+    let details_may = card_service
+        .show_invoice(user_id, &card.name, Some("2026-05".to_string()))
+        .await
+        .unwrap();
+    assert_eq!(details_may.invoice.month, "2026-05");
+    assert_eq!(details_may.total_amount, Money::new(dec!(150.00)).unwrap());
+    assert_eq!(details_may.transactions.len(), 2);
+    assert_eq!(
+        details_may.credit_limit,
+        Some(Money::new(dec!(5000.00)).unwrap())
+    );
+    // Total expenses so far = 150 (may) + 150 (jun) + 300 (installments) = 600. Limit available = 5000 - 600 = 4400.
+    assert_eq!(
+        details_may.available_limit,
+        Some(Money::new(dec!(4400.00)).unwrap())
+    );
+
+    // 6. Test CardService::close_invoice
+    let closed_may = card_service
+        .close_invoice(user_id, &card.name, Some("2026-05".to_string()))
+        .await
+        .unwrap();
+    assert_eq!(closed_may.status, InvoiceStatus::Closed);
+
+    // Verify error when closing already closed invoice
+    let double_close_err = card_service
+        .close_invoice(user_id, &card.name, Some("2026-05".to_string()))
+        .await;
+    assert!(double_close_err.is_err());
+    assert!(format!("{:?}", double_close_err).contains("já está fechada"));
+
+    // 7. Rollover test: A new purchase with date inside closed May invoice (e.g. 2026-05-18)
+    // MUST roll over to the next open invoice (2026-06)
+    tx_service
+        .create_transaction(CreateTransactionInput {
+            user_id,
+            account_query: card.name.clone(),
+            category_query: cat_mercado.name.clone(),
+            kind: TransactionKind::Expense,
+            amount: Money::new(dec!(80.00)).unwrap(),
+            date: NaiveDate::from_ymd_opt(2026, 5, 18).unwrap(),
+            description: "Compra atrasada após fechamento de maio".to_string(),
+            status: None,
+        })
+        .await
+        .unwrap();
+
+    let details_jun_after_rollover = card_service
+        .show_invoice(user_id, &card.name, Some("2026-06".to_string()))
+        .await
+        .unwrap();
+    assert_eq!(
+        details_jun_after_rollover.invoice.status,
+        InvoiceStatus::Open
+    );
 }

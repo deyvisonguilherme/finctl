@@ -307,13 +307,13 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Parcelamento de N parcelas gera lançamentos em N faturas consecutivas
 - **Notas:** Implementado suporte a contas de cartão de crédito (`AccountKind::CreditCard`) com dia de fechamento (`closing_day`), dia de vencimento (`due_day`) e limite (`credit_limit`). A entidade `CardInvoice` e o repositório `CardInvoiceRepository` gerenciam os ciclos de faturamento e criam faturas sob demanda (`get_or_create_for_transaction`). Compras realizadas até a data de fechamento pertencem à fatura do mês atual, enquanto compras após o fechamento avançam automaticamente para a fatura seguinte (com ajuste de meses mais curtos D-05). Parcelamentos distribuem as parcelas em faturas consecutivas. Testes unitários e de integração validam todas as regras de atribuição e persistência.
 
-### [ ] F4-03 — `finctl card invoice`
+### [x] F4-03 — `finctl card invoice`
 - **Depende de:** F4-02
 - **Escopo:** `card invoice list|show <cartão> [--month]` exibe lançamentos, total, vencimento e limite disponível; `card invoice close <cartão> [--month]` fecha a fatura.
 - **Critérios de aceite:**
   - Fatura fechada não aceita novos lançamentos (eles vão para a próxima)
   - Total da fatura confere com a soma dos lançamentos
-- **Notas:**
+- **Notas:** Comandos `finctl card invoice list`, `show` e `close` implementados com saída em table, json e csv. A listagem totaliza os lançamentos e indica o status de cada ciclo. O comando show detalha as despesas do período, vencimento, limite total e limite disponível. O fechamento (`close`) atualiza o status da fatura para `closed` e direciona lançamentos futuros ou atrasados automaticamente para a próxima fatura aberta. Testes de integração validam totais, limites e comportamento de rollover.
 
 ### [ ] F4-04 — Pagamento de fatura
 - **Depende de:** F4-03, F4-01
