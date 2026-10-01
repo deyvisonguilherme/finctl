@@ -1,5 +1,11 @@
+pub mod commands;
+pub mod format;
+
 use clap::{Parser, Subcommand};
+use commands::account::{handle_account_command, AccountCommands};
+use domain::UserId;
 use std::process::ExitCode;
+use std::str::FromStr;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -19,6 +25,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: DbCommands,
     },
+
+    /// Gerenciamento de contas bancárias e carteiras
+    Account {
+        #[command(subcommand)]
+        subcommand: AccountCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -36,6 +48,13 @@ pub fn get_database_url() -> Result<String, (String, u8)> {
             2,
         )
     })
+}
+
+pub fn get_current_user_id() -> UserId {
+    let id_str = std::env::var("FINCTL_USER_ID")
+        .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000001".to_string());
+    UserId::from_str(&id_str)
+        .unwrap_or_else(|_| UserId::from_str("00000000-0000-0000-0000-000000000001").unwrap())
 }
 
 async fn run() -> Result<(), (String, u8)> {
@@ -71,6 +90,14 @@ async fn run() -> Result<(), (String, u8)> {
                 Ok(())
             }
         },
+        Some(Commands::Account { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_account_command(subcommand, &pool, user_id).await
+        }
     }
 }
 

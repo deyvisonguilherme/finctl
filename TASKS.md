@@ -71,14 +71,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
 
 ## Fase 1 — MVP: receitas e despesas
 
-### [ ] F1-01 — `finctl account add|list`
+### [x] F1-01 — `finctl account add|list`
 - **Depende de:** F0-05, F0-04
 - **Escopo:** caso de uso + repositório + comandos; campos: nome, tipo (corrente, poupança, carteira, investimento), saldo inicial.
 - **Critérios de aceite:**
   - `finctl account add "Nubank" --kind checking --initial-balance 1500,00` cria a conta
   - `finctl account list` exibe tabela; suporta `--format json|csv`
   - Nome duplicado retorna erro de validação (código `1`)
-- **Notas:**
+- **Notas:** `Account` model, `AccountRepository`, `AccountService` e comandos `finctl account add|list` implementados com suporte a `--format table|json|csv` e validações de unicidade por usuário.
 
 ### [ ] F1-02 — `finctl category add|list`
 - **Depende de:** F0-05

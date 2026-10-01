@@ -24,4 +24,5 @@ testcontainers-modules = { workspace = true, optional = true }
 tokio = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
+rust_decimal_macros = { workspace = true }
 storage = { path = ".", features = ["test-helpers"] }
