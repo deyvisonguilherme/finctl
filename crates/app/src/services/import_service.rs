@@ -383,7 +383,7 @@ impl<'a> ImportService<'a> {
     }
 }
 
-fn load_profile(name: Option<&str>) -> Result<CsvProfile, AppError> {
+pub(crate) fn load_profile(name: Option<&str>) -> Result<CsvProfile, AppError> {
     let profile_name = name.unwrap_or("generic");
     if profile_name == "generic" {
         return Ok(CsvProfile::default());
@@ -447,7 +447,11 @@ fn detect_delimiter(sample: &str) -> char {
     }
 }
 
-fn find_column_index(headers: &csv::StringRecord, target: &str, aliases: &[&str]) -> Option<usize> {
+pub(crate) fn find_column_index(
+    headers: &csv::StringRecord,
+    target: &str,
+    aliases: &[&str],
+) -> Option<usize> {
     let target_norm = target.trim().to_lowercase();
     for (i, h) in headers.iter().enumerate() {
         let h_norm = h.trim().to_lowercase();

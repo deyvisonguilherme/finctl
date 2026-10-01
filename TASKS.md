@@ -324,14 +324,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Pagamento não aparece como despesa nos relatórios (é transferência)
 - **Notas:** Implementado comando `finctl card pay` para liquidação total ou parcial de faturas de cartão de crédito. A operação executa uma transferência atômica da conta pagadora para a conta do cartão com identificação do ciclo da fatura na descrição. Pagamentos parciais mantêm a fatura em status `closed` e exibem o saldo remanescente em `card invoice show`, enquanto pagamentos integrais atualizam o status para `paid`. Por se tratar de transferência contábil, os pagamentos não são computados como despesas em relatórios. Testes de integração validam fluxo de pagamento total, parcial e isolamento de relatórios.
 
-### [ ] F4-05 — Conciliação com extrato
+### [x] F4-05 — Conciliação com extrato
 - **Depende de:** F2-06
 - **Escopo:** `finctl reconcile --account X --file extrato.csv [--profile nome]` casa lançamentos por valor, data (± N dias, padrão 3) e similaridade de descrição; apresenta os pares sugeridos para confirmação e grava `reconciled_at`. `finctl reconcile status [--account X]` lista os não conciliados.
 - **Critérios de aceite:**
   - Reutiliza o parser e os perfis da F2-06
   - Nada é gravado sem confirmação (ou `--yes`)
   - Itens do extrato sem correspondência são listados, sem criar lançamentos automaticamente
-- **Notas:**
+- **Notas:** Implementado serviço `ReconcileService` e comando `finctl reconcile` com matching ponderado por proximidade de datas e similaridade textual de descrição. Apresenta proposta categorizada em `[MATCH]`, `[NOVO]` e `[PENDENTE]`, permitindo simulação e aplicação com `--yes` ou confirmação interativa. O comando `finctl reconcile status` lista os lançamentos pendentes com suporte a formatos `table`, `json` e `csv`. Testes de integração validam fluxo de matching, janelas de tolerância e atualização de `reconciled_at`.
 
 ### [ ] F4-06 — Tags e referência de anexos
 - **Depende de:** F2-00
