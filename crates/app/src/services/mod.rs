@@ -6,6 +6,7 @@ pub mod import_service;
 pub mod recurring_service;
 pub mod report_service;
 pub mod transaction_service;
+pub mod transfer_service;
 
 pub use account_service::AccountService;
 pub use balance_service::{AccountBalance, BalanceReport, BalanceService};
@@ -27,3 +28,4 @@ pub use transaction_service::{
     DeleteInstallmentGroupSummary, EditInstallmentGroupInput, EditInstallmentGroupSummary,
     EditTransactionInput, ListTransactionsInput, TransactionService,
 };
+pub use transfer_service::{CreateTransferInput, CreateTransferSummary, TransferService};

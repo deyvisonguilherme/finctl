@@ -9,4 +9,5 @@ pub mod income;
 pub mod init;
 pub mod recurring;
 pub mod report;
+pub mod transfer;
 pub mod tx;

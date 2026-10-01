@@ -107,6 +107,60 @@ impl CategoryRepository {
             Ok(None)
         }
     }
+
+    pub async fn get_or_create_transfer_category(
+        pool: &PgPool,
+        user_id: UserId,
+        kind: TransactionKind,
+    ) -> Result<Category, StorageError> {
+        let name = match kind {
+            TransactionKind::Expense => "Transferência",
+            TransactionKind::Income => "Transferência (Receita)",
+        };
+
+        let row = sqlx::query(
+            r#"
+            SELECT id, user_id, name, kind, parent_id, is_system, created_at
+            FROM categories
+            WHERE user_id = $1 AND kind = $2 AND is_system = true AND LOWER(name) = LOWER($3)
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(kind.as_str())
+        .bind(name)
+        .fetch_optional(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        if let Some(r) = row {
+            Ok(map_category_row(r)?)
+        } else {
+            let cat = Category::new_system(user_id, name.to_string(), kind)
+                .map_err(|e| StorageError::Conversion(e.to_string()))?;
+            match Self::create(pool, &cat).await {
+                Ok(_) => Ok(cat),
+                Err(StorageError::UniqueViolation(_)) => {
+                    let existing = sqlx::query(
+                        r#"
+                        SELECT id, user_id, name, kind, parent_id, is_system, created_at
+                        FROM categories
+                        WHERE user_id = $1 AND kind = $2 AND LOWER(name) = LOWER($3)
+                        LIMIT 1
+                        "#,
+                    )
+                    .bind(user_id.as_uuid())
+                    .bind(kind.as_str())
+                    .bind(name)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(StorageError::Database)?;
+                    Ok(map_category_row(existing)?)
+                }
+                Err(e) => Err(e),
+            }
+        }
+    }
 }
 
 fn map_category_row(row: sqlx::postgres::PgRow) -> Result<Category, StorageError> {

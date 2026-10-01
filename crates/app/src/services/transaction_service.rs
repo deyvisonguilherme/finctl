@@ -500,6 +500,12 @@ impl<'a> TransactionService<'a> {
                 AppError::NotFound(format!("Lançamento com ID '{}' não encontrado.", input.id))
             })?;
 
+        if tx.transfer_id.is_some() {
+            return Err(AppError::Validation(
+                "Lançamentos de transferência não podem ser editados individualmente. Para alterar, remova a transferência e crie uma nova com os dados corretos.".to_string(),
+            ));
+        }
+
         if let Some(ref acc_q) = input.account_query {
             let acc = AccountRepository::find_by_id_or_name(self.pool, input.user_id, acc_q)
                 .await?
@@ -553,11 +559,21 @@ impl<'a> TransactionService<'a> {
         user_id: UserId,
         id: TransactionId,
     ) -> Result<(), AppError> {
-        let deleted = TransactionRepository::delete(self.pool, user_id, id).await?;
-        if !deleted {
-            return Err(AppError::NotFound(format!(
-                "Lançamento com ID '{id}' não encontrado."
-            )));
+        let tx = TransactionRepository::find_by_id(self.pool, user_id, id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Lançamento com ID '{id}' não encontrado."))
+            })?;
+
+        if let Some(transfer_id) = tx.transfer_id {
+            TransactionRepository::delete_by_transfer_id(self.pool, user_id, transfer_id).await?;
+        } else {
+            let deleted = TransactionRepository::delete(self.pool, user_id, id).await?;
+            if !deleted {
+                return Err(AppError::NotFound(format!(
+                    "Lançamento com ID '{id}' não encontrado."
+                )));
+            }
         }
         Ok(())
     }
