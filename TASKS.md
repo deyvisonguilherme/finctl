@@ -333,14 +333,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Itens do extrato sem correspondência são listados, sem criar lançamentos automaticamente
 - **Notas:** Implementado serviço `ReconcileService` e comando `finctl reconcile` com matching ponderado por proximidade de datas e similaridade textual de descrição. Apresenta proposta categorizada em `[MATCH]`, `[NOVO]` e `[PENDENTE]`, permitindo simulação e aplicação com `--yes` ou confirmação interativa. O comando `finctl reconcile status` lista os lançamentos pendentes com suporte a formatos `table`, `json` e `csv`. Testes de integração validam fluxo de matching, janelas de tolerância e atualização de `reconciled_at`.
 
-### [ ] F4-06 — Tags e referência de anexos
+### [x] F4-06 — Tags e referência de anexos
 - **Depende de:** F2-00
 - **Escopo:** tabelas `tags`, `transaction_tags` e `attachments` (transação, URI, SHA-256 opcional, nota). Comandos `tag add|list|rm`, `tx tag <id> <tags...>`, `tx list --tag`, `tx attach <id> <caminho|url>` (só guarda a referência; não armazena o arquivo).
 - **Critérios de aceite:**
   - Anexo local tem a existência verificada e o hash calculado
   - `tag rm` pede confirmação quando a tag está em uso
   - `report categories --tag` filtra por tag, se F2-03 estiver concluída
-- **Notas:**
+- **Notas:** Implementado gerenciamento de tags (`TagService`, `TagRepository`, `finctl tag add|list|rm`) com verificação de uso pré-remoção e vinculação múltipla a transações (`finctl tx tag <id> <tags...>`). Implementada filtragem por tag em listagem de transações (`tx list --tag`) e em relatórios de categoria (`report categories --tag`). Suporte a anexos de referências locais com validação de existência e cálculo do hash SHA-256 ou URLs remotas (`finctl tx attach <id> <uri> [--note]`). Testes de integração validam todo o ciclo de criação, consulta, anexos e deleção segura.
 
 ---
 

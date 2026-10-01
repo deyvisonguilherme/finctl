@@ -35,6 +35,7 @@ pub struct ListTransactionsInput {
     pub kind: Option<TransactionKind>,
     pub status: Option<TransactionStatus>,
     pub installment_group_id: Option<Uuid>,
+    pub tag: Option<String>,
     pub limit: Option<i64>,
 }
 
@@ -257,6 +258,7 @@ impl<'a> TransactionService<'a> {
             kind: input.kind,
             status: input.status,
             installment_group_id: input.installment_group_id,
+            tag: input.tag,
             limit: input.limit,
             ..Default::default()
         };

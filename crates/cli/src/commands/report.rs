@@ -69,6 +69,10 @@ pub struct CategoriesArgs {
     #[arg(long)]
     pub include_pending: bool,
 
+    /// Filtrar lançamentos associados a uma tag específica
+    #[arg(long)]
+    pub tag: Option<String>,
+
     /// Formato de saída dos dados
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
     pub format: OutputFormat,
@@ -222,6 +226,7 @@ async fn handle_categories(
             kind: args.kind,
             depth: args.depth,
             include_pending: args.include_pending,
+            tag: args.tag,
         })
         .await
         .map_err(|e| (format!("Erro ao gerar relatório de categorias: {e}"), 1))?;

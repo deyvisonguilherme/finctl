@@ -114,6 +114,7 @@ async fn handle_export_tx(
             kind: args.kind,
             status: None,
             installment_group_id: None,
+            tag: None,
             limit: args.limit,
         })
         .await

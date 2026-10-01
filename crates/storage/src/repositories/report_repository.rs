@@ -27,6 +27,7 @@ pub struct CategoryReportFilter {
     pub kind: Option<TransactionKind>,
     pub depth: u32,
     pub include_pending: bool,
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -136,6 +137,11 @@ impl ReportRepository {
                       AND ($4::UUID IS NULL OR t.account_id = $4)
                       AND ($5::TEXT IS NULL OR t.kind = $5)
                       AND ($6::BOOLEAN = TRUE OR t.status = 'paid')
+                      AND ($7::TEXT IS NULL OR EXISTS (
+                          SELECT 1 FROM transaction_tags tt 
+                          JOIN tags tg ON tt.tag_id = tg.id 
+                          WHERE tt.transaction_id = t.id AND LOWER(tg.name) = LOWER($7)
+                      ))
                 )
                 SELECT 
                     cat.id AS category_id,
@@ -155,8 +161,9 @@ impl ReportRepository {
             .bind(filter.from_date)
             .bind(filter.to_date)
             .bind(filter.account_id.map(|id| id.as_uuid()))
-            .bind(kind_str)
+            .bind(kind_str.clone())
             .bind(filter.include_pending)
+            .bind(filter.tag.as_deref().map(|s| s.trim()))
             .fetch_all(pool)
             .await
             .map_err(StorageError::Database)?
@@ -182,6 +189,11 @@ impl ReportRepository {
                   AND ($4::UUID IS NULL OR t.account_id = $4)
                   AND ($5::TEXT IS NULL OR t.kind = $5)
                   AND ($6::BOOLEAN = TRUE OR t.status = 'paid')
+                  AND ($7::TEXT IS NULL OR EXISTS (
+                      SELECT 1 FROM transaction_tags tt 
+                      JOIN tags tg ON tt.tag_id = tg.id 
+                      WHERE tt.transaction_id = t.id AND LOWER(tg.name) = LOWER($7)
+                  ))
                 GROUP BY c.id, c.name, c.parent_id, p.name, c.kind
                 ORDER BY total_amount DESC, c.name ASC
                 "#,
@@ -192,6 +204,7 @@ impl ReportRepository {
             .bind(filter.account_id.map(|id| id.as_uuid()))
             .bind(kind_str)
             .bind(filter.include_pending)
+            .bind(filter.tag.as_deref().map(|s| s.trim()))
             .fetch_all(pool)
             .await
             .map_err(StorageError::Database)?

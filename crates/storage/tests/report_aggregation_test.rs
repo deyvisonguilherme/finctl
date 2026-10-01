@@ -231,6 +231,7 @@ async fn test_aggregation_layer_monthly_and_categories() {
             kind: Some(TransactionKind::Expense),
             depth: 1,
             include_pending: false,
+            tag: None,
         })
         .await
         .unwrap();
@@ -253,6 +254,7 @@ async fn test_aggregation_layer_monthly_and_categories() {
             kind: Some(TransactionKind::Expense),
             depth: 2,
             include_pending: false,
+            tag: None,
         })
         .await
         .unwrap();

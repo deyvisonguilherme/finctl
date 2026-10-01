@@ -129,6 +129,7 @@ async fn test_transfer_workflow() {
             kind: None,
             depth: 1,
             include_pending: false,
+            tag: None,
         })
         .await
         .unwrap();

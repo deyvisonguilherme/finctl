@@ -15,6 +15,7 @@ use commands::init::{handle_init_command, InitArgs};
 use commands::reconcile::{handle_reconcile_command, ReconcileArgs};
 use commands::recurring::{handle_recurring_command, RecurringCommands};
 use commands::report::{handle_report_command, ReportCommands};
+use commands::tag::{handle_tag_command, TagCommands};
 use commands::transfer::{handle_transfer_command, TransferCommands};
 use commands::tx::{handle_tx_command, TxCommands};
 use domain::UserId;
@@ -120,6 +121,12 @@ enum Commands {
 
     /// Conciliação bancária de lançamentos com extrato CSV
     Reconcile(ReconcileArgs),
+
+    /// Gerenciamento de tags para categorização transversal
+    Tag {
+        #[command(subcommand)]
+        subcommand: TagCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -298,6 +305,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_reconcile_command(&pool, user_id, args).await
+        }
+        Some(Commands::Tag { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_tag_command(subcommand, &pool, user_id).await
         }
     }
 }

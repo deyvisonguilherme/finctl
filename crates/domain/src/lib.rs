@@ -1,4 +1,5 @@
 pub mod account;
+pub mod attachment;
 pub mod budget;
 pub mod card_invoice;
 pub mod category;
@@ -6,10 +7,12 @@ pub mod errors;
 pub mod money;
 pub mod recurring;
 pub mod report;
+pub mod tag;
 pub mod transaction;
 pub mod types;
 
 pub use account::Account;
+pub use attachment::Attachment;
 pub use budget::{Budget, BudgetIndicator};
 pub use card_invoice::{
     calculate_invoice_dates_for_month, calculate_invoice_dates_for_transaction, clamp_day_to_month,
@@ -23,6 +26,7 @@ pub use report::{
     CategoryComparisonReport, CategoryComparisonRow, CategoryReportItem, CategoryReportSummary,
     MonthlyReportItem,
 };
+pub use tag::{Tag, TagWithUsage};
 pub use transaction::{calculate_installment_dates, split_installments, Transaction};
 pub use types::{
     AccountId, AccountKind, AttachmentId, BudgetId, CardInvoiceId, CategoryId, InvoiceStatus,
