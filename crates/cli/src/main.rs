@@ -7,6 +7,7 @@ use commands::balance::{handle_balance_command, BalanceArgs};
 use commands::category::{handle_category_command, CategoryCommands};
 use commands::expense::{handle_expense_command, ExpenseCommands};
 use commands::export::{handle_export_command, ExportCommands};
+use commands::import_cmd::{handle_import_command, ImportCommands};
 use commands::income::{handle_income_command, IncomeCommands};
 use commands::init::{handle_init_command, InitArgs};
 use commands::report::{handle_report_command, ReportCommands};
@@ -80,6 +81,12 @@ enum Commands {
     Export {
         #[command(subcommand)]
         subcommand: ExportCommands,
+    },
+
+    /// Importação de dados a partir de arquivos externos
+    Import {
+        #[command(subcommand)]
+        subcommand: ImportCommands,
     },
 }
 
@@ -211,6 +218,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_export_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Import { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_import_command(&pool, user_id, subcommand).await
         }
     }
 }

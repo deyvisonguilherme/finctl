@@ -215,7 +215,7 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Não sobrescreve arquivo existente sem `--force`
 - **Notas:** `finctl export tx` implementado com suporte aos formatos CSV (pt-BR com BOM UTF-8, ';' e vírgula decimal; en-US com ',' e ponto decimal) e JSON, proteção contra sobrescrita acidental com flag `--force` e filtros completos de listagem de transações. Testes de integração validam a formatação do arquivo exportado.
 
-### [ ] F2-06 — Importação de CSV
+### [x] F2-06 — Importação de CSV
 - **Depende de:** F2-00
 - **Escopo:** `finctl import csv <arquivo> --account X [--profile nome] [--dry-run]`. Perfis de mapeamento de colunas em TOML (`~/.config/finctl/profiles/`), com perfil `generic` embutido. `import_hash` calculado por data + valor + descrição + ocorrência. Lançamentos sem categoria vão para "A classificar".
 - **Critérios de aceite:**
@@ -223,7 +223,7 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - `--dry-run` mostra o que seria importado sem gravar
   - Resumo final: importados, duplicados ignorados e erros por linha (com número da linha)
   - Aceita vírgula ou ponto decimal e datas `DD/MM/YYYY` ou `YYYY-MM-DD`
-- **Notas:**
+- **Notas:** Comando `finctl import csv` implementado com suporte a perfis TOML (`generic`, `nubank` embutidos e diretório de perfis customizados), detecção inteligente de delimitador e formatos de data/valor monetário, cálculo de hash SHA-256 para garantia de idempotência, fallback para categoria de sistema "A classificar" / "A classificar (Receitas)", simulação via `--dry-run` e tabela de resumo com contagem de importados, duplicados e lista detalhada de erros por linha. Testes de integração cobrem idempotência, fallback e dry-run.
 
 ---
 
