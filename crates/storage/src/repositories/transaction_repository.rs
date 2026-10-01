@@ -46,6 +46,7 @@ pub struct TransactionFilter {
     pub transfer_id: Option<Uuid>,
     pub installment_group_id: Option<Uuid>,
     pub recurring_rule_id: Option<Uuid>,
+    pub reconciled: Option<bool>,
     pub limit: Option<i64>,
 }
 
@@ -249,6 +250,14 @@ impl TransactionRepository {
             builder.push_bind(rule_id);
         }
 
+        if let Some(reconciled) = filter.reconciled {
+            if reconciled {
+                builder.push(" AND t.reconciled_at IS NOT NULL");
+            } else {
+                builder.push(" AND t.reconciled_at IS NULL");
+            }
+        }
+
         builder.push(" ORDER BY t.date DESC, t.created_at DESC");
 
         if let Some(limit) = filter.limit {
@@ -310,6 +319,33 @@ impl TransactionRepository {
         }
 
         Ok(())
+    }
+
+    pub async fn mark_reconciled(
+        pool: &PgPool,
+        user_id: UserId,
+        ids: &[TransactionId],
+    ) -> Result<u64, StorageError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let uuids: Vec<Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
+        let rows_affected = sqlx::query(
+            r#"
+            UPDATE transactions
+            SET reconciled_at = NOW(), updated_at = NOW()
+            WHERE user_id = $1 AND id = ANY($2)
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(&uuids)
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?
+        .rows_affected();
+
+        Ok(rows_affected)
     }
 
     pub async fn delete(
