@@ -36,14 +36,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Erro de conexão retorna código de saída `2` com mensagem clara
 - **Notas:** `sqlx::PgPool` e `ping` implementados em `storage`, tipos de erro em `domain`/`app`, `finctl db ping` e tracing adicionados com retorno de código de saída 2 em erros de conexão.
 
-### [ ] F0-04 — Value object `Money` e tipos base do domínio
+### [x] F0-04 — Value object `Money` e tipos base do domínio
 - **Depende de:** F0-01
 - **Escopo:** `Money` (wrapper de `Decimal`, 2 casas, sempre positivo), `TransactionKind` (`Income`/`Expense`), `AccountKind`, IDs tipados.
 - **Critérios de aceite:**
   - `Money` rejeita valores negativos, zero (se aplicável) e mais de 2 casas decimais
   - Testes unitários cobrem criação, soma e formatação (`R$ 1.234,56`)
   - Nenhum uso de `f64` para dinheiro
-- **Notas:**
+- **Notas:** `Money` com validações e formatação pt-BR, `TransactionKind`, `AccountKind` e IDs tipados (`AccountId`, `CategoryId`, `TransactionId`, `UserId`) implementados no `domain` com testes unitários cobrindo todos os critérios.
 
 ### [ ] F0-05 — Primeira migration: accounts, categories, transactions
 - **Depende de:** F0-03
