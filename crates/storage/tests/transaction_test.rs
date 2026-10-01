@@ -1,9 +1,9 @@
 use app::{
-    AccountService, CategoryService, CreateTransactionInput, ListTransactionsInput,
-    TransactionService,
+    AccountService, CategoryService, CreateTransactionInput, EditTransactionInput,
+    ListTransactionsInput, TransactionService,
 };
 use chrono::NaiveDate;
-use domain::{AccountKind, Money, TransactionKind};
+use domain::{AccountKind, Money, TransactionId, TransactionKind};
 use rust_decimal_macros::dec;
 use storage::TestDb;
 
@@ -240,4 +240,93 @@ async fn test_transaction_list_filters() {
         .await
         .unwrap();
     assert_eq!(limit_txs.len(), 2);
+}
+
+#[tokio::test]
+async fn test_transaction_edit_and_delete() {
+    let test_db = TestDb::setup().await;
+    let pool = &test_db.pool;
+    let user_id = test_db.user_id;
+
+    let acc_service = AccountService::new(pool);
+    let cat_service = CategoryService::new(pool);
+    let tx_service = TransactionService::new(pool);
+
+    acc_service
+        .create_account(
+            user_id,
+            "Nubank".to_string(),
+            AccountKind::Checking,
+            Money::ZERO,
+        )
+        .await
+        .unwrap();
+
+    cat_service
+        .create_category(
+            user_id,
+            "Mercado".to_string(),
+            TransactionKind::Expense,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let tx = tx_service
+        .create_transaction(CreateTransactionInput {
+            user_id,
+            account_query: "Nubank".to_string(),
+            category_query: "Mercado".to_string(),
+            kind: TransactionKind::Expense,
+            amount: Money::new(dec!(50.00)).unwrap(),
+            date: NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
+            description: "Original".to_string(),
+        })
+        .await
+        .unwrap();
+
+    // 1. Edit transaction
+    let updated = tx_service
+        .edit_transaction(EditTransactionInput {
+            user_id,
+            id: tx.id,
+            account_query: None,
+            category_query: None,
+            amount: Some(Money::new(dec!(75.50)).unwrap()),
+            date: Some(NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()),
+            description: Some("Modificado".to_string()),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(updated.amount.as_decimal(), dec!(75.50));
+    assert_eq!(updated.description, "Modificado");
+
+    // 2. Delete transaction
+    tx_service
+        .delete_transaction(user_id, tx.id)
+        .await
+        .expect("deletar transação com sucesso");
+
+    // 3. Trying to delete again returns not found
+    let err = tx_service
+        .delete_transaction(user_id, tx.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, app::AppError::NotFound(_)));
+
+    // 4. Trying to edit non-existent returns not found
+    let edit_err = tx_service
+        .edit_transaction(EditTransactionInput {
+            user_id,
+            id: TransactionId::generate(),
+            account_query: None,
+            category_query: None,
+            amount: None,
+            date: None,
+            description: None,
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(edit_err, app::AppError::NotFound(_)));
 }

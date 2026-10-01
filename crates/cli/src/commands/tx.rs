@@ -1,9 +1,10 @@
 use crate::format::OutputFormat;
-use app::{ListTransactionsInput, TransactionService};
+use app::{EditTransactionInput, ListTransactionsInput, TransactionService};
 use chrono::NaiveDate;
 use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
-use domain::{TransactionKind, UserId};
+use dialoguer::Confirm;
+use domain::{Money, TransactionId, TransactionKind, UserId};
 use sqlx::PgPool;
 use storage::TransactionDetails;
 
@@ -42,6 +43,42 @@ pub enum TxCommands {
         /// Formato de saída (table, json, csv)
         #[arg(short, long, default_value_t = OutputFormat::Table)]
         format: OutputFormat,
+    },
+
+    /// Edita os campos de um lançamento existente
+    Edit {
+        /// ID do lançamento
+        id: String,
+
+        /// Novo nome ou ID da conta
+        #[arg(short, long)]
+        account: Option<String>,
+
+        /// Novo nome ou ID da categoria
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Novo valor monetário
+        #[arg(short = 'm', long = "amount")]
+        amount: Option<String>,
+
+        /// Nova data no formato AAAA-MM-DD
+        #[arg(short, long)]
+        date: Option<String>,
+
+        /// Nova descrição do lançamento
+        #[arg(long = "desc")]
+        description: Option<String>,
+    },
+
+    /// Remove um lançamento
+    Rm {
+        /// ID do lançamento
+        id: String,
+
+        /// Pular a confirmação interativa
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
     },
 }
 
@@ -144,6 +181,83 @@ pub async fn handle_tx_command(
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                 }
             }
+            Ok(())
+        }
+        TxCommands::Edit {
+            id,
+            account,
+            category,
+            amount,
+            date,
+            description,
+        } => {
+            let tx_id = id
+                .parse::<TransactionId>()
+                .map_err(|e| (format!("{e}"), 1))?;
+            let parsed_amount = if let Some(a) = amount {
+                Some(Money::parse(&a).map_err(|e| (format!("{e}"), 1))?)
+            } else {
+                None
+            };
+            let parsed_date = if let Some(d) = date {
+                Some(
+                    NaiveDate::parse_from_str(&d, "%Y-%m-%d")
+                        .map_err(|e| (format!("Data inválida '{d}'. Use AAAA-MM-DD: {e}"), 1))?,
+                )
+            } else {
+                None
+            };
+
+            let updated = service
+                .edit_transaction(EditTransactionInput {
+                    user_id,
+                    id: tx_id,
+                    account_query: account,
+                    category_query: category,
+                    amount: parsed_amount,
+                    date: parsed_date,
+                    description,
+                })
+                .await
+                .map_err(|e| match e {
+                    app::AppError::NotFound(n) => (n, 1),
+                    app::AppError::Validation(v) => (v, 1),
+                    app::AppError::Domain(d) => (format!("{d}"), 1),
+                    other => (format!("{other}"), 2),
+                })?;
+
+            println!("Lançamento '{}' atualizado com sucesso!", updated.id);
+            Ok(())
+        }
+        TxCommands::Rm { id, yes } => {
+            let tx_id = id
+                .parse::<TransactionId>()
+                .map_err(|e| (format!("{e}"), 1))?;
+
+            if !yes {
+                let confirmed = Confirm::new()
+                    .with_prompt(format!(
+                        "Tem certeza que deseja remover o lançamento '{id}'?"
+                    ))
+                    .default(false)
+                    .interact()
+                    .unwrap_or(false);
+
+                if !confirmed {
+                    println!("Operação cancelada.");
+                    return Ok(());
+                }
+            }
+
+            service
+                .delete_transaction(user_id, tx_id)
+                .await
+                .map_err(|e| match e {
+                    app::AppError::NotFound(n) => (n, 1),
+                    other => (format!("{other}"), 2),
+                })?;
+
+            println!("Lançamento '{id}' removido com sucesso!");
             Ok(())
         }
     }

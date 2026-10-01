@@ -1,6 +1,6 @@
 use crate::errors::AppError;
-use chrono::{Days, Local, NaiveDate};
-use domain::{Money, Transaction, TransactionKind, UserId};
+use chrono::{Days, Local, NaiveDate, Utc};
+use domain::{Money, Transaction, TransactionId, TransactionKind, UserId};
 use sqlx::PgPool;
 use storage::{
     AccountRepository, CategoryRepository, TransactionDetails, TransactionFilter,
@@ -27,6 +27,17 @@ pub struct ListTransactionsInput {
     pub category_query: Option<String>,
     pub kind: Option<TransactionKind>,
     pub limit: Option<i64>,
+}
+
+#[derive(Debug)]
+pub struct EditTransactionInput {
+    pub user_id: UserId,
+    pub id: TransactionId,
+    pub account_query: Option<String>,
+    pub category_query: Option<String>,
+    pub amount: Option<Money>,
+    pub date: Option<NaiveDate>,
+    pub description: Option<String>,
 }
 
 pub struct TransactionService<'a> {
@@ -158,5 +169,77 @@ impl<'a> TransactionService<'a> {
 
         let transactions = TransactionRepository::list_with_details(self.pool, filter).await?;
         Ok(transactions)
+    }
+
+    pub async fn edit_transaction(
+        &self,
+        input: EditTransactionInput,
+    ) -> Result<Transaction, AppError> {
+        let mut tx = TransactionRepository::find_by_id(self.pool, input.user_id, input.id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Lançamento com ID '{}' não encontrado.", input.id))
+            })?;
+
+        if let Some(ref acc_q) = input.account_query {
+            let acc = AccountRepository::find_by_id_or_name(self.pool, input.user_id, acc_q)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Conta '{acc_q}' não encontrada.")))?;
+            tx.account_id = acc.id;
+        }
+
+        if let Some(ref cat_q) = input.category_query {
+            let cat = CategoryRepository::find_by_id_or_name(self.pool, input.user_id, cat_q)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Categoria '{cat_q}' não encontrada."))
+                })?;
+
+            if cat.kind != tx.kind {
+                return Err(AppError::Validation(format!(
+                    "A categoria '{}' é do tipo '{}', mas o lançamento é do tipo '{}'.",
+                    cat.name,
+                    cat.kind.display_pt_br(),
+                    tx.kind.display_pt_br()
+                )));
+            }
+            tx.category_id = cat.id;
+        }
+
+        if let Some(amount) = input.amount {
+            tx.amount = amount;
+        }
+
+        if let Some(date) = input.date {
+            tx.date = date;
+        }
+
+        if let Some(description) = input.description {
+            let trimmed = description.trim().to_string();
+            if trimmed.len() > 255 {
+                return Err(AppError::Validation(
+                    "A descrição não pode ter mais de 255 caracteres.".to_string(),
+                ));
+            }
+            tx.description = trimmed;
+        }
+
+        tx.updated_at = Utc::now();
+        TransactionRepository::update(self.pool, &tx).await?;
+        Ok(tx)
+    }
+
+    pub async fn delete_transaction(
+        &self,
+        user_id: UserId,
+        id: TransactionId,
+    ) -> Result<(), AppError> {
+        let deleted = TransactionRepository::delete(self.pool, user_id, id).await?;
+        if !deleted {
+            return Err(AppError::NotFound(format!(
+                "Lançamento com ID '{id}' não encontrado."
+            )));
+        }
+        Ok(())
     }
 }

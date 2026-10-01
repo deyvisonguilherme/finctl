@@ -108,14 +108,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Teste de integração cobre combinações de filtros
 - **Notas:** `finctl tx list` implementado com QueryBuilder dinâmico, suporte a filtros combinados (`--from`, `--to`, `--month`, `--account`, `--category`, `--kind`, `--limit`), múltiplos formatos de saída e testes cobrindo os cenários.
 
-### [ ] F1-05 — `finctl tx edit|rm`
+### [x] F1-05 — `finctl tx edit|rm`
 - **Depende de:** F1-03
 - **Escopo:** editar campos de um lançamento por ID e removê-lo (com confirmação; `--yes` para pular).
 - **Critérios de aceite:**
   - Edição valida as mesmas regras da criação
   - `rm` pede confirmação interativa por padrão
   - ID inexistente retorna erro claro (código `1`)
-- **Notas:**
+- **Notas:** `finctl tx edit` e `finctl tx rm` implementados com suporte a `--yes`, prompt interativo do `dialoguer` e validações completas de negócio.
 
 ### [ ] F1-06 — `finctl balance`
 - **Depende de:** F1-03
