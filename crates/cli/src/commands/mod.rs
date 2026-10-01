@@ -11,5 +11,6 @@ pub mod init;
 pub mod reconcile;
 pub mod recurring;
 pub mod report;
+pub mod tag;
 pub mod transfer;
 pub mod tx;

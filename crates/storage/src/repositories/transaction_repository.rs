@@ -1,4 +1,5 @@
 use crate::errors::StorageError;
+use crate::repositories::TagRepository;
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::{
     AccountId, CategoryId, Money, Transaction, TransactionId, TransactionKind, TransactionStatus,
@@ -29,6 +30,7 @@ pub struct TransactionDetails {
     pub recurring_rule_id: Option<Uuid>,
     pub import_hash: Option<String>,
     pub reconciled_at: Option<DateTime<Utc>>,
+    pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -47,6 +49,7 @@ pub struct TransactionFilter {
     pub installment_group_id: Option<Uuid>,
     pub recurring_rule_id: Option<Uuid>,
     pub reconciled: Option<bool>,
+    pub tag: Option<String>,
     pub limit: Option<i64>,
 }
 
@@ -258,6 +261,12 @@ impl TransactionRepository {
             }
         }
 
+        if let Some(tag_name) = filter.tag {
+            builder.push(" AND EXISTS (SELECT 1 FROM transaction_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.transaction_id = t.id AND LOWER(tg.name) = LOWER(");
+            builder.push_bind(tag_name.trim().to_string());
+            builder.push("))");
+        }
+
         builder.push(" ORDER BY t.date DESC, t.created_at DESC");
 
         if let Some(limit) = filter.limit {
@@ -274,6 +283,14 @@ impl TransactionRepository {
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
             results.push(map_transaction_details_row(row)?);
+        }
+
+        let tx_ids: Vec<TransactionId> = results.iter().map(|r| r.id).collect();
+        let tags_map = TagRepository::get_tags_for_transactions(pool, &tx_ids).await?;
+        for tx in &mut results {
+            if let Some(tags) = tags_map.get(&tx.id) {
+                tx.tags = tags.clone();
+            }
         }
 
         Ok(results)
@@ -574,6 +591,7 @@ fn map_transaction_details_row(
         recurring_rule_id,
         import_hash,
         reconciled_at,
+        tags: Vec::new(),
         created_at,
         updated_at,
     })

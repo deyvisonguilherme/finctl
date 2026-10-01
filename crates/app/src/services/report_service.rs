@@ -28,6 +28,7 @@ pub struct CategoryReportInput {
     pub kind: Option<TransactionKind>,
     pub depth: u32,
     pub include_pending: bool,
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -136,6 +137,7 @@ impl<'a> ReportService<'a> {
             kind: input.kind,
             depth,
             include_pending: input.include_pending,
+            tag: input.tag,
         };
 
         let summary = ReportRepository::category_summary(self.pool, filter).await?;

@@ -47,6 +47,10 @@ pub enum TxCommands {
         #[arg(long = "group")]
         group: Option<String>,
 
+        /// Filtrar por tag
+        #[arg(long)]
+        tag: Option<String>,
+
         /// Limitar o número de registros exibidos
         #[arg(short, long)]
         limit: Option<i64>,
@@ -54,6 +58,29 @@ pub enum TxCommands {
         /// Formato de saída (table, json, csv)
         #[arg(short, long, default_value_t = OutputFormat::Table)]
         format: OutputFormat,
+    },
+
+    /// Associa tags a um lançamento
+    Tag {
+        /// ID do lançamento
+        id: String,
+
+        /// Tags a serem associadas (ex: viagem trabalho)
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+
+    /// Vincula um arquivo local ou URL externa como anexo ao lançamento
+    Attach {
+        /// ID do lançamento
+        id: String,
+
+        /// Caminho do arquivo local ou URL externa
+        path_or_uri: String,
+
+        /// Nota descritiva do anexo (opcional)
+        #[arg(short, long)]
+        note: Option<String>,
     },
 
     /// Marca um lançamento previsto (pendente) como realizado (pago)
@@ -128,6 +155,7 @@ pub async fn handle_tx_command(
             kind,
             status,
             group,
+            tag,
             limit,
             format,
         } => {
@@ -187,6 +215,7 @@ pub async fn handle_tx_command(
                     kind: tx_kind,
                     status: tx_status,
                     installment_group_id: grp_id,
+                    tag,
                     limit,
                 })
                 .await
@@ -214,6 +243,7 @@ pub async fn handle_tx_command(
                         "amount",
                         "status",
                         "description",
+                        "tags",
                     ])
                     .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
 
@@ -227,12 +257,51 @@ pub async fn handle_tx_command(
                             format!("{:.2}", tx.amount.as_decimal()),
                             tx.status.to_string(),
                             tx.description,
+                            tx.tags.join(";"),
                         ])
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                     }
                     wtr.flush()
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                 }
+            }
+            Ok(())
+        }
+        TxCommands::Tag { id, tags } => {
+            let tag_service = app::TagService::new(pool);
+            let updated = tag_service
+                .tag_transaction(user_id, &id, tags)
+                .await
+                .map_err(|e| (format!("Erro ao associar tags: {e}"), 1))?;
+
+            let formatted_tags = updated
+                .iter()
+                .map(|t| format!("#{t}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            println!("Tags atualizadas no lançamento {id}: {formatted_tags}");
+            Ok(())
+        }
+        TxCommands::Attach {
+            id,
+            path_or_uri,
+            note,
+        } => {
+            let attachment_service = app::AttachmentService::new(pool);
+            let attachment = attachment_service
+                .attach(user_id, &id, &path_or_uri, note)
+                .await
+                .map_err(|e| (format!("Erro ao anexar arquivo/URL: {e}"), 1))?;
+
+            println!("Anexo vinculado ao lançamento com sucesso!");
+            println!("  Lançamento: {id}");
+            println!("  URI:        {}", attachment.uri);
+            if let Some(ref h) = attachment.sha256 {
+                println!("  SHA-256:    {h}");
+            }
+            if let Some(ref n) = attachment.note {
+                println!("  Nota:       {n}");
             }
             Ok(())
         }
@@ -456,6 +525,7 @@ fn print_transactions_table(transactions: &[TransactionDetails]) {
         Cell::new("Valor").fg(Color::Cyan),
         Cell::new("Status").fg(Color::Cyan),
         Cell::new("Descrição").fg(Color::Cyan),
+        Cell::new("Tags").fg(Color::Cyan),
     ]);
 
     for tx in transactions {
@@ -475,6 +545,16 @@ fn print_transactions_table(transactions: &[TransactionDetails]) {
             TransactionStatus::Pending => Cell::new("previsto").fg(Color::Yellow),
         };
 
+        let tags_str = if tx.tags.is_empty() {
+            "-".to_string()
+        } else {
+            tx.tags
+                .iter()
+                .map(|t| format!("#{t}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
         table.add_row(vec![
             Cell::new(tx.id.to_string()),
             Cell::new(tx.date.to_string()),
@@ -484,6 +564,7 @@ fn print_transactions_table(transactions: &[TransactionDetails]) {
             amount_cell,
             status_cell,
             Cell::new(&tx.description),
+            Cell::new(tags_str).fg(Color::Magenta),
         ]);
     }
 
