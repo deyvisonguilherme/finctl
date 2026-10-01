@@ -256,14 +256,25 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - `rm` não apaga lançamentos já gerados
 - **Notas:** Comandos `finctl recurring add`, `list`, `edit`, `pause`, `resume` e `rm` implementados para regras semanais, mensais e anuais. Validações de contas, categorias e valores aplicadas de acordo com as regras de domínio. `recurring rm` remove a regra sem apagar os lançamentos já gerados. Testes de integração cobrem ciclo completo de CRUD, pausa, retomada e persistência.
 
-### [ ] F3-04 — `finctl recurring run`
+### [x] F3-04 — `finctl recurring run`
 - **Depende de:** F3-03, F3-01
 - **Escopo:** `finctl recurring run [--until <data>] [--dry-run]` gera lançamentos `pending` com `recurring_rule_id`. Índice único `(recurring_rule_id, date)` garante idempotência. Documentar exemplo de agendamento via cron ou systemd timer.
 - **Critérios de aceite:**
   - Rodar duas vezes seguidas não duplica lançamentos
   - Recupera ocorrências atrasadas (ex.: não rodou por 2 meses)
   - Falha parcial reverte tudo (transação única)
-- **Notas:**
+- **Notas:** Comando `finctl recurring run` implementado com suporte a `--until`, `--dry-run` e formatos de saída table/json/csv. Processamento executado atomicamente em transação SQL única, gerando lançamentos em status `pending` e atualizando `last_generated_date`. Cálculo de datas ajusta automaticamente meses curtos (decisão D-05) e recupera ocorrências em atraso. Idempotência garantida tanto em memória quanto pelo índice único `uq_transactions_recurring_date`. Testes unitários e de integração cobrem ciclo completo, simulação e idempotência.
+
+  *Exemplo de agendamento via cron:*
+  ```cron
+  0 6 * * * finctl recurring run >> /var/log/finctl-recurring.log 2>&1
+  ```
+  *Exemplo de agendamento via systemd timer (`~/.config/systemd/user/finctl-recurring.timer`):*
+  ```ini
+  [Timer]
+  OnCalendar=daily
+  Persistent=true
+  ```
 
 ### [ ] F3-05 — Parcelamentos
 - **Depende de:** F3-01

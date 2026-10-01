@@ -169,6 +169,35 @@ impl RecurringRepository {
         Ok(())
     }
 
+    pub async fn update_last_generated_date_conn(
+        conn: &mut sqlx::PgConnection,
+        rule_id: RecurringRuleId,
+        user_id: UserId,
+        last_date: NaiveDate,
+    ) -> Result<(), StorageError> {
+        let res = sqlx::query(
+            r#"
+            UPDATE recurring_rules
+            SET last_generated_date = $1, updated_at = NOW()
+            WHERE id = $2 AND user_id = $3
+            "#,
+        )
+        .bind(last_date)
+        .bind(rule_id.as_uuid())
+        .bind(user_id.as_uuid())
+        .execute(conn)
+        .await
+        .map_err(StorageError::Database)?;
+
+        if res.rows_affected() == 0 {
+            return Err(StorageError::NotFound(format!(
+                "Regra de recorrência com ID '{rule_id}' não encontrada."
+            )));
+        }
+
+        Ok(())
+    }
+
     pub async fn delete(
         pool: &PgPool,
         user_id: UserId,

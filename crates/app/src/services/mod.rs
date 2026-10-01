@@ -14,7 +14,10 @@ pub use category_service::{CategoryItem, CategoryService};
 pub use import_service::{
     CsvProfile, ImportCsvInput, ImportRowError, ImportService, ImportSummary,
 };
-pub use recurring_service::{CreateRecurringInput, EditRecurringInput, RecurringService};
+pub use recurring_service::{
+    CreateRecurringInput, EditRecurringInput, GeneratedRecurringTx, RecurringService,
+    RunRecurringInput, RunRecurringSummary,
+};
 pub use report_service::{
     parse_month_bounds, CategoryReportInput, CompareCategoriesInput, CompareReportInput,
     MonthlyReportInput, ReportService,

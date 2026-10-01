@@ -88,6 +88,67 @@ impl TransactionRepository {
         Ok(())
     }
 
+    pub async fn create_recurring_conn(
+        conn: &mut sqlx::PgConnection,
+        tx: &Transaction,
+    ) -> Result<bool, StorageError> {
+        let res = sqlx::query(
+            r#"
+            INSERT INTO transactions (
+                id, user_id, account_id, category_id, kind, amount, date, description,
+                status, transfer_id, installment_group_id, installment_number, installment_total,
+                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            ON CONFLICT (recurring_rule_id, date) WHERE recurring_rule_id IS NOT NULL DO NOTHING
+            "#,
+        )
+        .bind(tx.id.as_uuid())
+        .bind(tx.user_id.as_uuid())
+        .bind(tx.account_id.as_uuid())
+        .bind(tx.category_id.as_uuid())
+        .bind(tx.kind.as_str())
+        .bind(tx.amount.as_decimal())
+        .bind(tx.date)
+        .bind(&tx.description)
+        .bind(tx.status.as_str())
+        .bind(tx.transfer_id)
+        .bind(tx.installment_group_id)
+        .bind(tx.installment_number.map(|n| n as i32))
+        .bind(tx.installment_total.map(|t| t as i32))
+        .bind(tx.recurring_rule_id)
+        .bind(&tx.import_hash)
+        .bind(tx.reconciled_at)
+        .bind(tx.created_at)
+        .bind(tx.updated_at)
+        .execute(conn)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn exists_recurring_conn(
+        conn: &mut sqlx::PgConnection,
+        recurring_rule_id: Uuid,
+        date: NaiveDate,
+    ) -> Result<bool, StorageError> {
+        let row = sqlx::query(
+            r#"
+            SELECT 1 FROM transactions
+            WHERE recurring_rule_id = $1 AND date = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(recurring_rule_id)
+        .bind(date)
+        .fetch_optional(conn)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(row.is_some())
+    }
+
     pub async fn find_by_id(
         pool: &PgPool,
         user_id: UserId,

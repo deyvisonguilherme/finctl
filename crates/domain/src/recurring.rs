@@ -117,6 +117,112 @@ impl RecurringRule {
         self.active = true;
         self.updated_at = Utc::now();
     }
+
+    pub fn calculate_occurrences_until(&self, until_date: NaiveDate) -> Vec<NaiveDate> {
+        if !self.active {
+            return Vec::new();
+        }
+        let max_end = match self.end_date {
+            Some(end) => std::cmp::min(end, until_date),
+            None => until_date,
+        };
+        if self.start_date > max_end {
+            return Vec::new();
+        }
+
+        let mut dates = Vec::new();
+
+        match self.frequency {
+            RecurringFrequency::Weekly => {
+                let target_dow = self
+                    .day_of_week
+                    .unwrap_or_else(|| self.start_date.weekday().number_from_monday());
+                let start_dow = self.start_date.weekday().number_from_monday();
+                let offset = (target_dow as i64 - start_dow as i64).rem_euclid(7);
+                let mut curr = self.start_date + chrono::Duration::days(offset);
+
+                while curr <= max_end {
+                    if let Some(last_gen) = self.last_generated_date {
+                        if curr > last_gen {
+                            dates.push(curr);
+                        }
+                    } else {
+                        dates.push(curr);
+                    }
+                    curr += chrono::Duration::days(7);
+                }
+            }
+            RecurringFrequency::Monthly => {
+                let target_dom = self.day_of_month.unwrap_or_else(|| self.start_date.day());
+                let mut curr_year = self.start_date.year();
+                let mut curr_month = self.start_date.month();
+
+                let end_year = max_end.year();
+                let end_month = max_end.month();
+
+                while curr_year < end_year || (curr_year == end_year && curr_month <= end_month) {
+                    let dim = days_in_month(curr_year, curr_month);
+                    let day = target_dom.min(dim);
+                    if let Some(candidate) = NaiveDate::from_ymd_opt(curr_year, curr_month, day) {
+                        if candidate >= self.start_date && candidate <= max_end {
+                            if let Some(last_gen) = self.last_generated_date {
+                                if candidate > last_gen {
+                                    dates.push(candidate);
+                                }
+                            } else {
+                                dates.push(candidate);
+                            }
+                        }
+                    }
+
+                    if curr_month == 12 {
+                        curr_year += 1;
+                        curr_month = 1;
+                    } else {
+                        curr_month += 1;
+                    }
+                }
+            }
+            RecurringFrequency::Yearly => {
+                let target_month = self.start_date.month();
+                let target_dom = self.day_of_month.unwrap_or_else(|| self.start_date.day());
+                let mut curr_year = self.start_date.year();
+                let end_year = max_end.year();
+
+                while curr_year <= end_year {
+                    let dim = days_in_month(curr_year, target_month);
+                    let day = target_dom.min(dim);
+                    if let Some(candidate) = NaiveDate::from_ymd_opt(curr_year, target_month, day) {
+                        if candidate >= self.start_date && candidate <= max_end {
+                            if let Some(last_gen) = self.last_generated_date {
+                                if candidate > last_gen {
+                                    dates.push(candidate);
+                                }
+                            } else {
+                                dates.push(candidate);
+                            }
+                        }
+                    }
+                    curr_year += 1;
+                }
+            }
+        }
+
+        dates
+    }
+}
+
+pub fn days_in_month(year: i32, month: u32) -> u32 {
+    let next_month = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    };
+    if let Some(next_first) = next_month {
+        next_first.pred_opt().map(|d| d.day()).unwrap_or(30)
+    } else {
+        30
+    }
 }
 
 #[cfg(test)]
@@ -156,5 +262,90 @@ mod tests {
 
         rule.resume();
         assert!(rule.active);
+    }
+
+    #[test]
+    fn test_calculate_occurrences_monthly_short_months_d05() {
+        let user_id = UserId::generate();
+        let acc_id = AccountId::generate();
+        let cat_id = CategoryId::generate();
+        let amount = Money::new(dec!(100.00)).unwrap();
+        let start_date = NaiveDate::from_ymd_opt(2026, 1, 31).unwrap();
+
+        let mut rule = RecurringRule::new(
+            user_id,
+            acc_id,
+            cat_id,
+            TransactionKind::Expense,
+            amount,
+            "Assinatura Mensal".to_string(),
+            RecurringFrequency::Monthly,
+            Some(31),
+            None,
+            start_date,
+            None,
+        )
+        .unwrap();
+
+        let until = NaiveDate::from_ymd_opt(2026, 4, 30).unwrap();
+        let dates = rule.calculate_occurrences_until(until);
+
+        assert_eq!(
+            dates,
+            vec![
+                NaiveDate::from_ymd_opt(2026, 1, 31).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 2, 28).unwrap(), // Feb 28 (short month)
+                NaiveDate::from_ymd_opt(2026, 3, 31).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(), // Apr 30 (short month)
+            ]
+        );
+
+        // If last_generated_date is set to Feb 28, should only return Mar and Apr
+        rule.last_generated_date = Some(NaiveDate::from_ymd_opt(2026, 2, 28).unwrap());
+        let remaining = rule.calculate_occurrences_until(until);
+        assert_eq!(
+            remaining,
+            vec![
+                NaiveDate::from_ymd_opt(2026, 3, 31).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_calculate_occurrences_weekly() {
+        let user_id = UserId::generate();
+        let acc_id = AccountId::generate();
+        let cat_id = CategoryId::generate();
+        let amount = Money::new(dec!(50.00)).unwrap();
+        // 2026-10-01 is Thursday (4)
+        let start_date = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+
+        let rule = RecurringRule::new(
+            user_id,
+            acc_id,
+            cat_id,
+            TransactionKind::Expense,
+            amount,
+            "Feira Semanal".to_string(),
+            RecurringFrequency::Weekly,
+            None,
+            Some(1), // Monday
+            start_date,
+            None,
+        )
+        .unwrap();
+
+        let until = NaiveDate::from_ymd_opt(2026, 10, 20).unwrap();
+        let dates = rule.calculate_occurrences_until(until);
+
+        assert_eq!(
+            dates,
+            vec![
+                NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 10, 12).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 10, 19).unwrap(),
+            ]
+        );
     }
 }

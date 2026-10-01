@@ -1,8 +1,15 @@
 use crate::errors::AppError;
 use chrono::{Local, NaiveDate, Utc};
-use domain::{Money, RecurringFrequency, RecurringRule, RecurringRuleId, TransactionKind, UserId};
+use domain::{
+    Money, RecurringFrequency, RecurringRule, RecurringRuleId, Transaction, TransactionKind,
+    TransactionStatus, UserId,
+};
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use storage::{AccountRepository, CategoryRepository, RecurringRepository, RecurringRuleDetails};
+use storage::{
+    AccountRepository, CategoryRepository, RecurringRepository, RecurringRuleDetails, StorageError,
+    TransactionRepository,
+};
 
 pub struct CreateRecurringInput {
     pub user_id: UserId,
@@ -26,6 +33,32 @@ pub struct EditRecurringInput {
     pub amount: Option<Money>,
     pub description: Option<String>,
     pub end_date: Option<NaiveDate>,
+}
+
+pub struct RunRecurringInput {
+    pub user_id: UserId,
+    pub until_date: Option<NaiveDate>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneratedRecurringTx {
+    pub rule_id: RecurringRuleId,
+    pub rule_description: String,
+    pub account_name: String,
+    pub category_name: String,
+    pub kind: TransactionKind,
+    pub amount: Money,
+    pub date: NaiveDate,
+    pub status: TransactionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunRecurringSummary {
+    pub rules_evaluated: usize,
+    pub transactions_generated: Vec<GeneratedRecurringTx>,
+    pub dry_run: bool,
+    pub until_date: NaiveDate,
 }
 
 pub struct RecurringService<'a> {
@@ -210,5 +243,139 @@ impl<'a> RecurringService<'a> {
             )));
         }
         Ok(())
+    }
+
+    pub async fn run_recurring(
+        &self,
+        input: RunRecurringInput,
+    ) -> Result<RunRecurringSummary, AppError> {
+        let until = input
+            .until_date
+            .unwrap_or_else(|| Local::now().date_naive());
+
+        let active_rules =
+            RecurringRepository::list_by_user(self.pool, input.user_id, Some(true)).await?;
+
+        let mut db_tx = self.pool.begin().await.map_err(StorageError::Database)?;
+
+        let mut generated = Vec::new();
+
+        for rule_detail in &active_rules {
+            let rule = RecurringRule {
+                id: rule_detail.id,
+                user_id: rule_detail.user_id,
+                account_id: rule_detail.account_id,
+                category_id: rule_detail.category_id,
+                kind: rule_detail.kind,
+                amount: rule_detail.amount,
+                description: rule_detail.description.clone(),
+                frequency: rule_detail.frequency,
+                day_of_month: rule_detail.day_of_month,
+                day_of_week: rule_detail.day_of_week,
+                start_date: rule_detail.start_date,
+                end_date: rule_detail.end_date,
+                active: rule_detail.active,
+                last_generated_date: rule_detail.last_generated_date,
+                created_at: rule_detail.created_at,
+                updated_at: rule_detail.updated_at,
+            };
+
+            let dates = rule.calculate_occurrences_until(until);
+            if dates.is_empty() {
+                continue;
+            }
+
+            let mut latest_inserted_date = rule.last_generated_date;
+
+            for date in dates {
+                if input.dry_run {
+                    let exists = TransactionRepository::exists_recurring_conn(
+                        &mut db_tx,
+                        rule.id.as_uuid(),
+                        date,
+                    )
+                    .await?;
+
+                    if !exists {
+                        generated.push(GeneratedRecurringTx {
+                            rule_id: rule.id,
+                            rule_description: rule.description.clone(),
+                            account_name: rule_detail.account_name.clone(),
+                            category_name: rule_detail.category_name.clone(),
+                            kind: rule.kind,
+                            amount: rule.amount,
+                            date,
+                            status: TransactionStatus::Pending,
+                        });
+                    }
+                } else {
+                    let tx = Transaction::new_full(
+                        rule.user_id,
+                        rule.account_id,
+                        rule.category_id,
+                        rule.kind,
+                        rule.amount,
+                        date,
+                        rule.description.clone(),
+                        TransactionStatus::Pending,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(rule.id.as_uuid()),
+                        None,
+                        None,
+                    )?;
+
+                    let inserted =
+                        TransactionRepository::create_recurring_conn(&mut db_tx, &tx).await?;
+
+                    if inserted {
+                        generated.push(GeneratedRecurringTx {
+                            rule_id: rule.id,
+                            rule_description: rule.description.clone(),
+                            account_name: rule_detail.account_name.clone(),
+                            category_name: rule_detail.category_name.clone(),
+                            kind: rule.kind,
+                            amount: rule.amount,
+                            date,
+                            status: TransactionStatus::Pending,
+                        });
+
+                        latest_inserted_date = match latest_inserted_date {
+                            Some(d) => Some(std::cmp::max(d, date)),
+                            None => Some(date),
+                        };
+                    }
+                }
+            }
+
+            if !input.dry_run {
+                if let Some(last_date) = latest_inserted_date {
+                    if Some(last_date) != rule.last_generated_date {
+                        RecurringRepository::update_last_generated_date_conn(
+                            &mut db_tx,
+                            rule.id,
+                            input.user_id,
+                            last_date,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+
+        if !input.dry_run {
+            db_tx.commit().await.map_err(StorageError::Database)?;
+        } else {
+            db_tx.rollback().await.map_err(StorageError::Database)?;
+        }
+
+        Ok(RunRecurringSummary {
+            rules_evaluated: active_rules.len(),
+            transactions_generated: generated,
+            dry_run: input.dry_run,
+            until_date: until,
+        })
     }
 }
