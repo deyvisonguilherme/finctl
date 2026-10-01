@@ -346,14 +346,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
 
 ## Gate — Revisão das Fases 2–4
 
-### [ ] G-01 — Revisão e documentação
+### [x] G-01 — Revisão e documentação
 - **Depende de:** todas as tasks das Fases 2–4
 - **Escopo:** teste de ponta a ponta (conta → lançamentos → recorrência → parcelas → cartão → pagamento de fatura → relatórios), README atualizado com os novos comandos e revisão das regras transversais.
 - **Critérios de aceite:**
   - Cenário E2E automatizado passa no CI
   - Relatórios nunca contam transferências nem lançamentos `pending` por padrão
   - README cobre todos os comandos novos
-- **Notas:**
+- **Notas:** Implementado teste de ciclo completo de ponta a ponta (`crates/storage/tests/e2e_full_lifecycle_test.rs`) cobrindo configuração de contas bancárias e cartão de crédito, hierarquia de categorias, execução e idempotência de regras recorrentes, lançamentos previstos vs realizados, parcelamento com distribuição em faturas consecutivas, rollovers após data de fechamento, conciliação e pagamento integral de fatura com restauração de limite, transferências entre contas, anexação de comprovantes com hash SHA-256 e tags, monitoramento e alerta de orçamentos, isolamento contábil e consistência dos relatórios mensais, anuais e por categoria. `README.md` completamente reformulado e detalhado com guia de início rápido, formatos de saída (`table|json|csv`), códigos de saída (`0`, `1`, `2`), documentação de regras transversais e exemplos práticos para todos os comandos das Fases 1 a 4. Todos os testes do workspace e verificações de qualidade (`cargo fmt`, `cargo clippy`, `cargo test`) passaram com sucesso.
 
 ---
 
