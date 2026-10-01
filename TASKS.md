@@ -125,13 +125,13 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Saída em tabela com total ao final; suporta `--format json`
 - **Notas:** `finctl balance` implementado com agregação SQL (saldo inicial + receitas - despesas), suporte ao filtro `--at <data>`, exibição em tabela formatada com linha de TOTAL GERAL e exportação em json/csv.
 
-### [ ] F1-07 — Seed de categorias padrão
+### [x] F1-07 — Seed de categorias padrão
 - **Depende de:** F1-02
 - **Escopo:** `finctl init` cria categorias iniciais comuns (Moradia, Alimentação, Transporte, Saúde, Lazer, Salário, etc.).
 - **Critérios de aceite:**
   - Comando é idempotente (rodar duas vezes não duplica)
   - Usuário pode pular com `--no-seed`
-- **Notas:**
+- **Notas:** `finctl init` implementado com execução de migrations e seed de categorias e subcategorias padrão de receitas e despesas de forma idempotente e suporte a flag `--no-seed`.
 
 ### [ ] F1-08 — Documentação do MVP
 - **Depende de:** F1-01 a F1-07

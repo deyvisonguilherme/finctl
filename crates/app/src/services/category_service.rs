@@ -101,4 +101,95 @@ impl<'a> CategoryService<'a> {
 
         Ok(items)
     }
+
+    /// Cria categorias e subcategorias padrão para um usuário de forma idempotente.
+    pub async fn seed_default_categories(&self, user_id: UserId) -> Result<usize, AppError> {
+        let default_seed = vec![
+            // Despesas
+            (
+                "Alimentação",
+                TransactionKind::Expense,
+                vec!["Supermercado", "Restaurante", "Lanches"],
+            ),
+            (
+                "Moradia",
+                TransactionKind::Expense,
+                vec!["Aluguel", "Contas residenciais", "Manutenção"],
+            ),
+            (
+                "Transporte",
+                TransactionKind::Expense,
+                vec![
+                    "Combustível",
+                    "Transporte público",
+                    "Manutenção veículo",
+                    "Estacionamento",
+                ],
+            ),
+            (
+                "Saúde",
+                TransactionKind::Expense,
+                vec!["Farmácia", "Consultas e exames", "Plano de saúde"],
+            ),
+            (
+                "Lazer",
+                TransactionKind::Expense,
+                vec!["Viagens", "Cinema e streaming", "Bares e festas"],
+            ),
+            (
+                "Educação",
+                TransactionKind::Expense,
+                vec!["Cursos", "Livros e material"],
+            ),
+            ("Outras Despesas", TransactionKind::Expense, vec![]),
+            // Receitas
+            (
+                "Salário",
+                TransactionKind::Income,
+                vec!["Salário mensal", "13º Salário", "Férias", "Bônus"],
+            ),
+            (
+                "Rendimentos",
+                TransactionKind::Income,
+                vec!["Investimentos", "Dividendos", "Juros"],
+            ),
+            ("Outras Receitas", TransactionKind::Income, vec![]),
+        ];
+
+        let mut created_count = 0;
+        let existing = CategoryRepository::list_by_user(self.pool, user_id).await?;
+
+        for (root_name, kind, subcategories) in default_seed {
+            let root_cat = if let Some(found) = existing
+                .iter()
+                .find(|c| c.parent_id.is_none() && c.name.eq_ignore_ascii_case(root_name))
+            {
+                found.clone()
+            } else {
+                let new_root = Category::new(user_id, root_name.to_string(), kind, None)?;
+                CategoryRepository::create(self.pool, &new_root).await?;
+                created_count += 1;
+                new_root
+            };
+
+            for sub_name in subcategories {
+                let exists = existing.iter().any(|c| {
+                    c.parent_id == Some(root_cat.id) && c.name.eq_ignore_ascii_case(sub_name)
+                });
+
+                if !exists {
+                    let new_sub =
+                        Category::new(user_id, sub_name.to_string(), kind, Some(root_cat.id))?;
+                    if CategoryRepository::create(self.pool, &new_sub)
+                        .await
+                        .is_ok()
+                    {
+                        created_count += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(created_count)
+    }
 }
