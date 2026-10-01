@@ -9,8 +9,9 @@ pub use db::{create_pool, ping, run_migrations};
 pub use errors::StorageError;
 pub use repositories::{
     AccountRepository, BudgetDetails, BudgetRepository, CategoryCompareFilter,
-    CategoryReportFilter, CategoryRepository, MonthlyReportFilter, ReportRepository,
-    TransactionDetails, TransactionFilter, TransactionRepository,
+    CategoryReportFilter, CategoryRepository, MonthlyReportFilter, RecurringRepository,
+    RecurringRuleDetails, ReportRepository, TransactionDetails, TransactionFilter,
+    TransactionRepository,
 };
 
 #[cfg(feature = "test-helpers")]

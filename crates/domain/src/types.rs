@@ -203,6 +203,55 @@ impl fmt::Display for AccountKind {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+pub enum RecurringFrequency {
+    Weekly,
+    #[default]
+    Monthly,
+    Yearly,
+}
+
+impl RecurringFrequency {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Weekly => "weekly",
+            Self::Monthly => "monthly",
+            Self::Yearly => "yearly",
+        }
+    }
+
+    pub fn display_pt_br(&self) -> &'static str {
+        match self {
+            Self::Weekly => "Semanal",
+            Self::Monthly => "Mensal",
+            Self::Yearly => "Anual",
+        }
+    }
+}
+
+impl FromStr for RecurringFrequency {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "weekly" | "semanal" | "semana" => Ok(Self::Weekly),
+            "monthly" | "mensal" | "mes" | "mês" => Ok(Self::Monthly),
+            "yearly" | "anual" | "ano" => Ok(Self::Yearly),
+            _ => Err(DomainError::Validation(format!(
+                "Frequência recorrente inválida '{s}'. Use: weekly, monthly ou yearly."
+            ))),
+        }
+    }
+}
+
+impl fmt::Display for RecurringFrequency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

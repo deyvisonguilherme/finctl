@@ -11,6 +11,7 @@ use commands::export::{handle_export_command, ExportCommands};
 use commands::import_cmd::{handle_import_command, ImportCommands};
 use commands::income::{handle_income_command, IncomeCommands};
 use commands::init::{handle_init_command, InitArgs};
+use commands::recurring::{handle_recurring_command, RecurringCommands};
 use commands::report::{handle_report_command, ReportCommands};
 use commands::tx::{handle_tx_command, TxCommands};
 use domain::UserId;
@@ -73,6 +74,12 @@ enum Commands {
     Budget {
         #[command(subcommand)]
         subcommand: BudgetCommands,
+    },
+
+    /// Gerenciamento de regras de lançamentos recorrentes
+    Recurring {
+        #[command(subcommand)]
+        subcommand: RecurringCommands,
     },
 
     /// Consulta de saldos consolidados por conta e total geral
@@ -209,6 +216,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_budget_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Recurring { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_recurring_command(&pool, user_id, subcommand).await
         }
         Some(Commands::Balance(args)) => {
             let db_url = get_database_url()?;

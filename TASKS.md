@@ -247,14 +247,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Testes cobrem os três estados do indicador
 - **Notas:** Comandos `finctl budget set`, `list` e `status` implementados com suporte a orçamentos recorrentes e exceções mensais específicas. O status agrega despesas de categorias filhas na categoria pai e classifica os indicadores em OK, ALERTA (≥ 80%) e ESTOURADO (> 100%). Após `expense add`, alertas de orçamento são exibidos no stderr sem alterar o exit code 0. Testes de integração validam hierarquia, cálculo de status e alertas.
 
-### [ ] F3-03 — Regras de recorrência (CRUD)
+### [x] F3-03 — Regras de recorrência (CRUD)
 - **Depende de:** F2-00
 - **Escopo:** migration `recurring_rules` (tipo, conta, categoria, valor, descrição, frequência `weekly|monthly|yearly`, dia, `start_date`, `end_date`, `active`, `last_generated_date`). Comandos `recurring add|list|edit|pause|rm`.
 - **Critérios de aceite:**
   - Dia 29–31 em mês mais curto usa o último dia do mês (decisão D-05)
   - Validações iguais às de lançamentos avulsos
   - `rm` não apaga lançamentos já gerados
-- **Notas:**
+- **Notas:** Comandos `finctl recurring add`, `list`, `edit`, `pause`, `resume` e `rm` implementados para regras semanais, mensais e anuais. Validações de contas, categorias e valores aplicadas de acordo com as regras de domínio. `recurring rm` remove a regra sem apagar os lançamentos já gerados. Testes de integração cobrem ciclo completo de CRUD, pausa, retomada e persistência.
 
 ### [ ] F3-04 — `finctl recurring run`
 - **Depende de:** F3-03, F3-01

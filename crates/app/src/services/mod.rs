@@ -3,6 +3,7 @@ pub mod balance_service;
 pub mod budget_service;
 pub mod category_service;
 pub mod import_service;
+pub mod recurring_service;
 pub mod report_service;
 pub mod transaction_service;
 
@@ -13,6 +14,7 @@ pub use category_service::{CategoryItem, CategoryService};
 pub use import_service::{
     CsvProfile, ImportCsvInput, ImportRowError, ImportService, ImportSummary,
 };
+pub use recurring_service::{CreateRecurringInput, EditRecurringInput, RecurringService};
 pub use report_service::{
     parse_month_bounds, CategoryReportInput, CompareCategoriesInput, CompareReportInput,
     MonthlyReportInput, ReportService,
