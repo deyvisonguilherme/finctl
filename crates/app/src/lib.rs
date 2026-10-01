@@ -10,6 +10,7 @@ pub use services::{
     CreateTransactionInput, CreateTransferInput, CreateTransferSummary, CsvProfile,
     DeleteInstallmentGroupSummary, EditInstallmentGroupInput, EditInstallmentGroupSummary,
     EditRecurringInput, EditTransactionInput, GeneratedRecurringTx, ImportCsvInput, ImportRowError,
-    ImportService, ImportSummary, ListTransactionsInput, MonthlyReportInput, RecurringService,
-    ReportService, RunRecurringInput, RunRecurringSummary, TransactionService, TransferService,
+    ImportService, ImportSummary, ListTransactionsInput, MonthlyReportInput, PayCardInvoiceInput,
+    PayCardInvoiceSummary, RecurringService, ReportService, RunRecurringInput, RunRecurringSummary,
+    TransactionService, TransferService,
 };

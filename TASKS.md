@@ -315,14 +315,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Total da fatura confere com a soma dos lançamentos
 - **Notas:** Comandos `finctl card invoice list`, `show` e `close` implementados com saída em table, json e csv. A listagem totaliza os lançamentos e indica o status de cada ciclo. O comando show detalha as despesas do período, vencimento, limite total e limite disponível. O fechamento (`close`) atualiza o status da fatura para `closed` e direciona lançamentos futuros ou atrasados automaticamente para a próxima fatura aberta. Testes de integração validam totais, limites e comportamento de rollover.
 
-### [ ] F4-04 — Pagamento de fatura
+### [x] F4-04 — Pagamento de fatura
 - **Depende de:** F4-03, F4-01
 - **Escopo:** `card pay <cartão> --from <conta> [--month] [--amount]` gera uma transferência (F4-01) da conta pagadora para o cartão e atualiza o status da fatura. Valor padrão: total da fatura.
 - **Critérios de aceite:**
   - Pagamento total marca a fatura como `paid`
   - Pagamento parcial mantém `closed`, com saldo restante visível em `card invoice show`
   - Pagamento não aparece como despesa nos relatórios (é transferência)
-- **Notas:**
+- **Notas:** Implementado comando `finctl card pay` para liquidação total ou parcial de faturas de cartão de crédito. A operação executa uma transferência atômica da conta pagadora para a conta do cartão com identificação do ciclo da fatura na descrição. Pagamentos parciais mantêm a fatura em status `closed` e exibem o saldo remanescente em `card invoice show`, enquanto pagamentos integrais atualizam o status para `paid`. Por se tratar de transferência contábil, os pagamentos não são computados como despesas em relatórios. Testes de integração validam fluxo de pagamento total, parcial e isolamento de relatórios.
 
 ### [ ] F4-05 — Conciliação com extrato
 - **Depende de:** F2-06
