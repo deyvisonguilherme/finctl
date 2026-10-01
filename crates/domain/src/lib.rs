@@ -1,1 +1,3 @@
-//! Domain models and business logic for finctl.
+pub mod errors;
+
+pub use errors::DomainError;

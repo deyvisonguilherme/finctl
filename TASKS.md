@@ -28,13 +28,13 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Binário falha com mensagem clara se `DATABASE_URL` estiver ausente
 - **Notas:** `docker-compose.yml` criado com Postgres 16 Alpine, `.env.example` documentado e verificação de `DATABASE_URL` com código de saída 2 implementada.
 
-### [ ] F0-03 — Conexão, pool e tratamento de erros
+### [x] F0-03 — Conexão, pool e tratamento de erros
 - **Depende de:** F0-02
 - **Escopo:** módulo de conexão com `sqlx::PgPool` na crate `storage`; tipos de erro (`thiserror`) no `domain`/`app`; `anyhow` no binário; `tracing` inicializado.
 - **Critérios de aceite:**
   - Comando `finctl db ping` confirma a conexão
   - Erro de conexão retorna código de saída `2` com mensagem clara
-- **Notas:**
+- **Notas:** `sqlx::PgPool` e `ping` implementados em `storage`, tipos de erro em `domain`/`app`, `finctl db ping` e tracing adicionados com retorno de código de saída 2 em erros de conexão.
 
 ### [ ] F0-04 — Value object `Money` e tipos base do domínio
 - **Depende de:** F0-01

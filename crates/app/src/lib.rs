@@ -1,1 +1,3 @@
-//! Application services and use cases for finctl.
+pub mod errors;
+
+pub use errors::AppError;

@@ -13,20 +13,18 @@ struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
-enum Commands {}
+enum Commands {
+    /// Operações de banco de dados
+    Db {
+        #[command(subcommand)]
+        subcommand: DbCommands,
+    },
+}
 
-fn run() -> Result<(), (String, u8)> {
-    dotenvy::dotenv().ok();
-    let cli = Cli::parse();
-
-    match cli.command {
-        None => {
-            println!("finctl {}", env!("CARGO_PKG_VERSION"));
-            println!("Use `finctl --help` para ver os comandos disponíveis.");
-            Ok(())
-        }
-        Some(_) => Ok(()),
-    }
+#[derive(Subcommand, Debug)]
+enum DbCommands {
+    /// Testa a conexão com o banco de dados
+    Ping,
 }
 
 pub fn get_database_url() -> Result<String, (String, u8)> {
@@ -38,8 +36,34 @@ pub fn get_database_url() -> Result<String, (String, u8)> {
     })
 }
 
-fn main() -> ExitCode {
-    if let Err((msg, code)) = run() {
+async fn run() -> Result<(), (String, u8)> {
+    dotenvy::dotenv().ok();
+    let _ = tracing_subscriber::fmt::try_init();
+    let cli = Cli::parse();
+
+    match cli.command {
+        None => {
+            println!("finctl {}", env!("CARGO_PKG_VERSION"));
+            println!("Use `finctl --help` para ver os comandos disponíveis.");
+            Ok(())
+        }
+        Some(Commands::Db { subcommand }) => match subcommand {
+            DbCommands::Ping => {
+                let db_url = get_database_url()?;
+                let pool = storage::create_pool(&db_url)
+                    .await
+                    .map_err(|e| (e.to_string(), 2))?;
+                storage::ping(&pool).await.map_err(|e| (e.to_string(), 2))?;
+                println!("Conexão com o banco de dados realizada com sucesso!");
+                Ok(())
+            }
+        },
+    }
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    if let Err((msg, code)) = run().await {
         eprintln!("{msg}");
         ExitCode::from(code)
     } else {
