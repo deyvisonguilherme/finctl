@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+test-helpers = ["dep:testcontainers", "dep:testcontainers-modules", "dep:tokio"]
+
 [dependencies]
 domain = { workspace = true }
 sqlx = { workspace = true }
@@ -12,8 +16,12 @@ chrono = { workspace = true }
 rust_decimal = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true, optional = true }
+testcontainers = { workspace = true, optional = true }
+testcontainers-modules = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
+storage = { path = ".", features = ["test-helpers"] }

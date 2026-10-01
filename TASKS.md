@@ -59,13 +59,13 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Teste de integração com `testcontainers` valida o schema
 - **Notas:** Migration inicial criada em `crates/storage/migrations`, comando `finctl db migrate` adicionado e testes de integração com `testcontainers` validando schema e constraints em banco PostgreSQL real.
 
-### [ ] F0-06 — Infraestrutura de testes de integração
+### [x] F0-06 — Infraestrutura de testes de integração
 - **Depende de:** F0-05
 - **Escopo:** helper de teste que sobe Postgres via `testcontainers`, aplica migrations e devolve um pool isolado por teste.
 - **Critérios de aceite:**
   - `cargo test --workspace` roda os testes de integração localmente e no CI
   - Testes não interferem entre si
-- **Notas:**
+- **Notas:** `TestDb` implementado em `crates/storage/src/test_helpers.rs` compatível com Docker/Podman, com isolamento garantido por container/usuário e testes em `crates/storage/tests/isolation_test.rs`.
 
 ---
 
