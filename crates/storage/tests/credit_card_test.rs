@@ -252,3 +252,149 @@ async fn test_credit_card_model_and_invoice_attribution() {
         InvoiceStatus::Open
     );
 }
+
+#[tokio::test]
+async fn test_card_payment_full_and_partial_and_report_exclusion() {
+    let test_db = TestDb::setup().await;
+    let pool = &test_db.pool;
+    let user_id = test_db.user_id;
+
+    let acc_service = AccountService::new(pool);
+    let cat_service = CategoryService::new(pool);
+    let tx_service = TransactionService::new(pool);
+    let card_service = app::CardService::new(pool);
+    let report_service = app::ReportService::new(pool);
+
+    // 1. Create Checking account (R$ 2.000,00) and Credit Card account
+    let checking = acc_service
+        .create_account_with_input(app::CreateAccountInput {
+            user_id,
+            name: "Conta Salário".to_string(),
+            kind: AccountKind::Checking,
+            initial_balance: Money::from_decimal_non_negative(dec!(2000.00)).unwrap(),
+            closing_day: None,
+            due_day: None,
+            credit_limit: None,
+        })
+        .await
+        .unwrap();
+
+    let card = acc_service
+        .create_account_with_input(app::CreateAccountInput {
+            user_id,
+            name: "Cartão XP".to_string(),
+            kind: AccountKind::CreditCard,
+            initial_balance: Money::from_decimal_non_negative(dec!(0.00)).unwrap(),
+            closing_day: Some(15),
+            due_day: Some(25),
+            credit_limit: Some(Money::new(dec!(3000.00)).unwrap()),
+        })
+        .await
+        .unwrap();
+
+    let cat_restaurante = cat_service
+        .create_category(
+            user_id,
+            "Restaurante".to_string(),
+            TransactionKind::Expense,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // 2. Purchase R$ 500,00 on 2026-08-10 (Invoice 2026-08)
+    tx_service
+        .create_transaction(CreateTransactionInput {
+            user_id,
+            account_query: card.name.clone(),
+            category_query: cat_restaurante.name.clone(),
+            kind: TransactionKind::Expense,
+            amount: Money::new(dec!(500.00)).unwrap(),
+            date: NaiveDate::from_ymd_opt(2026, 8, 10).unwrap(),
+            description: "Jantar".to_string(),
+            status: None,
+        })
+        .await
+        .unwrap();
+
+    // 3. Close the invoice 2026-08
+    card_service
+        .close_invoice(user_id, &card.name, Some("2026-08".to_string()))
+        .await
+        .unwrap();
+
+    // 4. Partial payment: Pay R$ 200,00 from checking to card
+    let partial_pay = card_service
+        .pay_invoice(app::PayCardInvoiceInput {
+            user_id,
+            card_query: card.name.clone(),
+            from_account_query: checking.name.clone(),
+            month: Some("2026-08".to_string()),
+            amount: Some(Money::new(dec!(200.00)).unwrap()),
+            date: Some(NaiveDate::from_ymd_opt(2026, 8, 22).unwrap()),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(partial_pay.amount_paid, Money::new(dec!(200.00)).unwrap());
+    assert_eq!(
+        partial_pay.remaining_balance,
+        Money::new(dec!(300.00)).unwrap()
+    );
+    assert_eq!(partial_pay.invoice_status, InvoiceStatus::Closed);
+
+    let details_partial = card_service
+        .show_invoice(user_id, &card.name, Some("2026-08".to_string()))
+        .await
+        .unwrap();
+    assert_eq!(
+        details_partial.paid_amount,
+        Money::new(dec!(200.00)).unwrap()
+    );
+    assert_eq!(
+        details_partial.remaining_amount,
+        Money::new(dec!(300.00)).unwrap()
+    );
+    assert_eq!(details_partial.invoice.status, InvoiceStatus::Closed);
+
+    // 5. Full remaining payment: Pay without --amount (auto remaining R$ 300,00)
+    let full_pay = card_service
+        .pay_invoice(app::PayCardInvoiceInput {
+            user_id,
+            card_query: card.name.clone(),
+            from_account_query: checking.name.clone(),
+            month: Some("2026-08".to_string()),
+            amount: None,
+            date: Some(NaiveDate::from_ymd_opt(2026, 8, 25).unwrap()),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(full_pay.amount_paid, Money::new(dec!(300.00)).unwrap());
+    assert_eq!(full_pay.remaining_balance, Money::ZERO);
+    assert_eq!(full_pay.invoice_status, InvoiceStatus::Paid);
+
+    let details_full = card_service
+        .show_invoice(user_id, &card.name, Some("2026-08".to_string()))
+        .await
+        .unwrap();
+    assert_eq!(details_full.paid_amount, Money::new(dec!(500.00)).unwrap());
+    assert_eq!(details_full.remaining_amount, Money::ZERO);
+    assert_eq!(details_full.invoice.status, InvoiceStatus::Paid);
+
+    // 6. Reports: Monthly report must contain ONLY the purchase (R$ 500,00), NOT the payments
+    let rep = report_service
+        .monthly_report(app::MonthlyReportInput {
+            user_id,
+            month: Some("2026-08".to_string()),
+            year: None,
+            account_query: None,
+            include_pending: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(rep.len(), 1);
+    assert_eq!(rep[0].total_expense.as_decimal(), dec!(500.00));
+    assert_eq!(rep[0].total_income.as_decimal(), dec!(0.00));
+}

@@ -1,8 +1,9 @@
 use crate::format::OutputFormat;
-use app::{CardInvoiceDetails, CardInvoiceSummary, CardService};
+use app::{CardInvoiceDetails, CardInvoiceSummary, CardService, PayCardInvoiceInput};
+use chrono::NaiveDate;
 use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
-use domain::UserId;
+use domain::{Money, UserId};
 use sqlx::PgPool;
 
 #[derive(Subcommand, Debug)]
@@ -11,6 +12,28 @@ pub enum CardCommands {
     Invoice {
         #[command(subcommand)]
         subcommand: InvoiceCommands,
+    },
+
+    /// Realiza o pagamento de uma fatura de cartão de crédito
+    Pay {
+        /// Nome ou ID do cartão de crédito
+        card: String,
+
+        /// Conta bancária pagadora de onde sairá o dinheiro
+        #[arg(long = "from")]
+        from: String,
+
+        /// Mês da fatura a pagar (AAAA-MM). Se omitido, paga a fatura fechada mais antiga
+        #[arg(short, long)]
+        month: Option<String>,
+
+        /// Valor do pagamento (se omitido, paga o saldo total restante da fatura)
+        #[arg(short = 'm', long = "amount")]
+        amount: Option<String>,
+
+        /// Data do pagamento no formato AAAA-MM-DD (padrão: hoje)
+        #[arg(short, long)]
+        date: Option<String>,
     },
 }
 
@@ -178,6 +201,67 @@ pub async fn handle_card_command(
                 }
             }
         }
+        CardCommands::Pay {
+            card,
+            from,
+            month,
+            amount,
+            date,
+        } => {
+            let parsed_amount = if let Some(ref a) = amount {
+                Some(Money::parse(a).map_err(|e| (format!("{e}"), 1))?)
+            } else {
+                None
+            };
+
+            let payment_date = if let Some(ref d) = date {
+                Some(NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|e| {
+                    (
+                        format!("Data inválida '{d}'. Use o formato AAAA-MM-DD: {e}"),
+                        1,
+                    )
+                })?)
+            } else {
+                None
+            };
+
+            let summary = service
+                .pay_invoice(PayCardInvoiceInput {
+                    user_id,
+                    card_query: card,
+                    from_account_query: from,
+                    month,
+                    amount: parsed_amount,
+                    date: payment_date,
+                })
+                .await
+                .map_err(|e| match e {
+                    app::AppError::NotFound(n) => (n, 1),
+                    app::AppError::Validation(v) => (v, 1),
+                    app::AppError::Domain(d) => (format!("{d}"), 1),
+                    other => (format!("{other}"), 2),
+                })?;
+
+            println!(
+                "Pagamento de {} da fatura '{}' do cartão '{}' realizado com sucesso a partir de '{}'!",
+                summary.amount_paid.format_pt_br(),
+                summary.invoice_month,
+                summary.card_name,
+                summary.from_account_name
+            );
+            println!(
+                "Status da Fatura: {}",
+                summary.invoice_status.display_pt_br()
+            );
+            if summary.invoice_status != domain::InvoiceStatus::Paid {
+                println!(
+                    "Saldo Restante da Fatura: {}",
+                    summary.remaining_balance.format_pt_br()
+                );
+            }
+            println!("Transfer ID: {}", summary.transfer_id);
+            Ok(())
+        }
     }
 }
 
@@ -271,4 +355,11 @@ fn print_invoice_details_table(details: &CardInvoiceDetails) {
     }
 
     println!("Total da Fatura: {}", details.total_amount.format_pt_br());
+    if details.paid_amount.as_decimal() > rust_decimal::Decimal::ZERO {
+        println!("Valor Pago: {}", details.paid_amount.format_pt_br());
+        println!(
+            "Saldo Restante: {}",
+            details.remaining_amount.format_pt_br()
+        );
+    }
 }
