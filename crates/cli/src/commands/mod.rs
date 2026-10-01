@@ -2,6 +2,7 @@ pub mod account;
 pub mod balance;
 pub mod category;
 pub mod expense;
+pub mod export;
 pub mod income;
 pub mod init;
 pub mod report;

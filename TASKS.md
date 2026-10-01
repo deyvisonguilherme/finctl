@@ -207,13 +207,13 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Suporta `--format json`
 - **Notas:** `finctl report compare` implementado com suporte a `--months` e `--last N`, cálculo de variação absoluta e percentual (com exibição segura de `n/d` em base zero sem divisão por zero), e saída em table/json/csv com destaque de cores. Testes de integração cobrem cenários com variação e base zero.
 
-### [ ] F2-05 — Exportação para arquivo
+### [x] F2-05 — Exportação para arquivo
 - **Depende de:** F1-04
 - **Escopo:** `finctl export tx --output <arquivo> [filtros de tx list] [--format csv|json] [--locale pt-BR]`. No CSV pt-BR: separador `;`, vírgula decimal e BOM UTF-8 (abre direto no Excel).
 - **Critérios de aceite:**
   - Reimportar o CSV exportado (F2-06, perfil `generic`) reproduz os mesmos lançamentos
   - Não sobrescreve arquivo existente sem `--force`
-- **Notas:**
+- **Notas:** `finctl export tx` implementado com suporte aos formatos CSV (pt-BR com BOM UTF-8, ';' e vírgula decimal; en-US com ',' e ponto decimal) e JSON, proteção contra sobrescrita acidental com flag `--force` e filtros completos de listagem de transações. Testes de integração validam a formatação do arquivo exportado.
 
 ### [ ] F2-06 — Importação de CSV
 - **Depende de:** F2-00
