@@ -4,4 +4,4 @@ pub mod transaction_service;
 
 pub use account_service::AccountService;
 pub use category_service::{CategoryItem, CategoryService};
-pub use transaction_service::{CreateTransactionInput, TransactionService};
+pub use transaction_service::{CreateTransactionInput, ListTransactionsInput, TransactionService};

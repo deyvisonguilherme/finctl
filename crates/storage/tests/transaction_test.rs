@@ -1,4 +1,7 @@
-use app::{AccountService, CategoryService, CreateTransactionInput, TransactionService};
+use app::{
+    AccountService, CategoryService, CreateTransactionInput, ListTransactionsInput,
+    TransactionService,
+};
 use chrono::NaiveDate;
 use domain::{AccountKind, Money, TransactionKind};
 use rust_decimal_macros::dec;
@@ -96,4 +99,145 @@ async fn test_create_income_and_expense_transactions() {
         invalid_res.is_err(),
         "Expense com categoria de receita deve falhar"
     );
+}
+
+#[tokio::test]
+async fn test_transaction_list_filters() {
+    let test_db = TestDb::setup().await;
+    let pool = &test_db.pool;
+    let user_id = test_db.user_id;
+
+    let acc_service = AccountService::new(pool);
+    let cat_service = CategoryService::new(pool);
+    let tx_service = TransactionService::new(pool);
+
+    acc_service
+        .create_account(
+            user_id,
+            "Nubank".to_string(),
+            AccountKind::Checking,
+            Money::ZERO,
+        )
+        .await
+        .unwrap();
+
+    acc_service
+        .create_account(
+            user_id,
+            "Inter".to_string(),
+            AccountKind::Checking,
+            Money::ZERO,
+        )
+        .await
+        .unwrap();
+
+    cat_service
+        .create_category(
+            user_id,
+            "Alimentação".to_string(),
+            TransactionKind::Expense,
+            None,
+        )
+        .await
+        .unwrap();
+
+    cat_service
+        .create_category(
+            user_id,
+            "Salário".to_string(),
+            TransactionKind::Income,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Insert multiple transactions across dates
+    tx_service
+        .create_transaction(CreateTransactionInput {
+            user_id,
+            account_query: "Nubank".to_string(),
+            category_query: "Alimentação".to_string(),
+            kind: TransactionKind::Expense,
+            amount: Money::new(dec!(50.00)).unwrap(),
+            date: NaiveDate::from_ymd_opt(2026, 9, 15).unwrap(),
+            description: "Almoço Setembro".to_string(),
+        })
+        .await
+        .unwrap();
+
+    tx_service
+        .create_transaction(CreateTransactionInput {
+            user_id,
+            account_query: "Inter".to_string(),
+            category_query: "Alimentação".to_string(),
+            kind: TransactionKind::Expense,
+            amount: Money::new(dec!(100.00)).unwrap(),
+            date: NaiveDate::from_ymd_opt(2026, 10, 2).unwrap(),
+            description: "Jantar Outubro".to_string(),
+        })
+        .await
+        .unwrap();
+
+    tx_service
+        .create_transaction(CreateTransactionInput {
+            user_id,
+            account_query: "Nubank".to_string(),
+            category_query: "Salário".to_string(),
+            kind: TransactionKind::Income,
+            amount: Money::new(dec!(3000.00)).unwrap(),
+            date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
+            description: "Salário Outubro".to_string(),
+        })
+        .await
+        .unwrap();
+
+    // Filter by month 2026-10
+    let oct_txs = tx_service
+        .list_transactions(ListTransactionsInput {
+            user_id,
+            month: Some("2026-10".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(oct_txs.len(), 2);
+
+    // Filter by account "Nubank"
+    let nubank_txs = tx_service
+        .list_transactions(ListTransactionsInput {
+            user_id,
+            account_query: Some("Nubank".to_string()),
+            month: Some("2026-10".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(nubank_txs.len(), 1);
+    assert_eq!(nubank_txs[0].description, "Salário Outubro");
+
+    // Filter by kind Income
+    let income_txs = tx_service
+        .list_transactions(ListTransactionsInput {
+            user_id,
+            kind: Some(TransactionKind::Income),
+            from_date: Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            to_date: Some(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(income_txs.len(), 1);
+
+    // Limit test
+    let limit_txs = tx_service
+        .list_transactions(ListTransactionsInput {
+            user_id,
+            from_date: Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            to_date: Some(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()),
+            limit: Some(2),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(limit_txs.len(), 2);
 }

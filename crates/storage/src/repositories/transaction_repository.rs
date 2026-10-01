@@ -2,8 +2,36 @@ use crate::errors::StorageError;
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::{AccountId, CategoryId, Money, Transaction, TransactionId, TransactionKind, UserId};
 use rust_decimal::Decimal;
-use sqlx::{PgPool, Row};
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, QueryBuilder, Row};
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionDetails {
+    pub id: TransactionId,
+    pub user_id: UserId,
+    pub account_id: AccountId,
+    pub account_name: String,
+    pub category_id: CategoryId,
+    pub category_name: String,
+    pub kind: TransactionKind,
+    pub amount: Money,
+    pub date: NaiveDate,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TransactionFilter {
+    pub user_id: UserId,
+    pub from_date: Option<NaiveDate>,
+    pub to_date: Option<NaiveDate>,
+    pub account_id: Option<AccountId>,
+    pub category_id: Option<CategoryId>,
+    pub kind: Option<TransactionKind>,
+    pub limit: Option<i64>,
+}
 
 pub struct TransactionRepository;
 
@@ -88,6 +116,109 @@ impl TransactionRepository {
         }
     }
 
+    pub async fn list_with_details(
+        pool: &PgPool,
+        filter: TransactionFilter,
+    ) -> Result<Vec<TransactionDetails>, StorageError> {
+        let mut builder: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
+            r#"
+            SELECT 
+                t.id, t.user_id, t.account_id, a.name AS account_name,
+                t.category_id, c.name AS category_name,
+                t.kind, t.amount, t.date, t.description,
+                t.created_at, t.updated_at
+            FROM transactions t
+            JOIN accounts a ON t.account_id = a.id
+            JOIN categories c ON t.category_id = c.id
+            WHERE t.user_id = 
+            "#,
+        );
+        builder.push_bind(filter.user_id.as_uuid());
+
+        if let Some(from) = filter.from_date {
+            builder.push(" AND t.date >= ");
+            builder.push_bind(from);
+        }
+
+        if let Some(to) = filter.to_date {
+            builder.push(" AND t.date <= ");
+            builder.push_bind(to);
+        }
+
+        if let Some(acc_id) = filter.account_id {
+            builder.push(" AND t.account_id = ");
+            builder.push_bind(acc_id.as_uuid());
+        }
+
+        if let Some(cat_id) = filter.category_id {
+            builder.push(" AND t.category_id = ");
+            builder.push_bind(cat_id.as_uuid());
+        }
+
+        if let Some(kind) = filter.kind {
+            builder.push(" AND t.kind = ");
+            builder.push_bind(kind.as_str());
+        }
+
+        builder.push(" ORDER BY t.date DESC, t.created_at DESC");
+
+        if let Some(limit) = filter.limit {
+            builder.push(" LIMIT ");
+            builder.push_bind(limit);
+        }
+
+        let query = builder.build();
+        let rows = query
+            .fetch_all(pool)
+            .await
+            .map_err(StorageError::Database)?;
+
+        let mut results = Vec::with_capacity(rows.len());
+        for row in rows {
+            let id: Uuid = row.try_get("id").map_err(StorageError::Database)?;
+            let u_id: Uuid = row.try_get("user_id").map_err(StorageError::Database)?;
+            let acc_id: Uuid = row.try_get("account_id").map_err(StorageError::Database)?;
+            let account_name: String = row
+                .try_get("account_name")
+                .map_err(StorageError::Database)?;
+            let cat_id: Uuid = row.try_get("category_id").map_err(StorageError::Database)?;
+            let category_name: String = row
+                .try_get("category_name")
+                .map_err(StorageError::Database)?;
+            let kind_str: String = row.try_get("kind").map_err(StorageError::Database)?;
+            let amount_dec: Decimal = row.try_get("amount").map_err(StorageError::Database)?;
+            let date: NaiveDate = row.try_get("date").map_err(StorageError::Database)?;
+            let description: String = row.try_get("description").map_err(StorageError::Database)?;
+            let created_at: DateTime<Utc> =
+                row.try_get("created_at").map_err(StorageError::Database)?;
+            let updated_at: DateTime<Utc> =
+                row.try_get("updated_at").map_err(StorageError::Database)?;
+
+            let kind: TransactionKind = kind_str
+                .parse()
+                .map_err(|e| StorageError::Database(sqlx::Error::Decode(Box::new(e))))?;
+            let amount = Money::new(amount_dec)
+                .map_err(|e| StorageError::Database(sqlx::Error::Decode(Box::new(e))))?;
+
+            results.push(TransactionDetails {
+                id: TransactionId::new(tx_id_from_uuid(id)),
+                user_id: UserId::new(u_id),
+                account_id: AccountId::new(acc_id),
+                account_name,
+                category_id: CategoryId::new(cat_id),
+                category_name,
+                kind,
+                amount,
+                date,
+                description,
+                created_at,
+                updated_at,
+            });
+        }
+
+        Ok(results)
+    }
+
     pub async fn update(pool: &PgPool, tx: &Transaction) -> Result<(), StorageError> {
         let res = sqlx::query(
             r#"
@@ -133,4 +264,8 @@ impl TransactionRepository {
 
         Ok(res.rows_affected() > 0)
     }
+}
+
+fn tx_id_from_uuid(u: Uuid) -> Uuid {
+    u
 }

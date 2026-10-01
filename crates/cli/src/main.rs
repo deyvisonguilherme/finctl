@@ -6,6 +6,7 @@ use commands::account::{handle_account_command, AccountCommands};
 use commands::category::{handle_category_command, CategoryCommands};
 use commands::expense::{handle_expense_command, ExpenseCommands};
 use commands::income::{handle_income_command, IncomeCommands};
+use commands::tx::{handle_tx_command, TxCommands};
 use domain::UserId;
 use std::process::ExitCode;
 use std::str::FromStr;
@@ -51,6 +52,12 @@ enum Commands {
     Expense {
         #[command(subcommand)]
         subcommand: ExpenseCommands,
+    },
+
+    /// Consulta e gerenciamento de transações/lançamentos
+    Tx {
+        #[command(subcommand)]
+        subcommand: TxCommands,
     },
 }
 
@@ -142,6 +149,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_expense_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Tx { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_tx_command(subcommand, &pool, user_id).await
         }
     }
 }

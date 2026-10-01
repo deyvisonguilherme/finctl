@@ -99,14 +99,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Imprime o ID do lançamento criado
 - **Notas:** `Transaction` model, `TransactionRepository`, `TransactionService` e comandos `finctl income add` e `finctl expense add` implementados com validações de compatibilidade de categoria, formatação de moeda e datas.
 
-### [ ] F1-04 — `finctl tx list` com filtros
+### [x] F1-04 — `finctl tx list` com filtros
 - **Depende de:** F1-03
 - **Escopo:** listagem com filtros por período (`--from`, `--to`, `--month`), conta, categoria e tipo; ordenação por data.
 - **Critérios de aceite:**
   - Filtros combináveis; sem filtros lista os últimos 30 dias
   - Suporta `--format table|json|csv` e `--limit`
   - Teste de integração cobre combinações de filtros
-- **Notas:**
+- **Notas:** `finctl tx list` implementado com QueryBuilder dinâmico, suporte a filtros combinados (`--from`, `--to`, `--month`, `--account`, `--category`, `--kind`, `--limit`), múltiplos formatos de saída e testes cobrindo os cenários.
 
 ### [ ] F1-05 — `finctl tx edit|rm`
 - **Depende de:** F1-03

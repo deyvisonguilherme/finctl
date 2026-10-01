@@ -1,8 +1,11 @@
 use crate::errors::AppError;
-use chrono::NaiveDate;
+use chrono::{Days, Local, NaiveDate};
 use domain::{Money, Transaction, TransactionKind, UserId};
 use sqlx::PgPool;
-use storage::{AccountRepository, CategoryRepository, TransactionRepository};
+use storage::{
+    AccountRepository, CategoryRepository, TransactionDetails, TransactionFilter,
+    TransactionRepository,
+};
 
 pub struct CreateTransactionInput {
     pub user_id: UserId,
@@ -12,6 +15,18 @@ pub struct CreateTransactionInput {
     pub amount: Money,
     pub date: NaiveDate,
     pub description: String,
+}
+
+#[derive(Default, Debug)]
+pub struct ListTransactionsInput {
+    pub user_id: UserId,
+    pub from_date: Option<NaiveDate>,
+    pub to_date: Option<NaiveDate>,
+    pub month: Option<String>,
+    pub account_query: Option<String>,
+    pub category_query: Option<String>,
+    pub kind: Option<TransactionKind>,
+    pub limit: Option<i64>,
 }
 
 pub struct TransactionService<'a> {
@@ -65,5 +80,83 @@ impl<'a> TransactionService<'a> {
 
         TransactionRepository::create(self.pool, &transaction).await?;
         Ok(transaction)
+    }
+
+    pub async fn list_transactions(
+        &self,
+        input: ListTransactionsInput,
+    ) -> Result<Vec<TransactionDetails>, AppError> {
+        let account_id = if let Some(ref acc_q) = input.account_query {
+            let acc = AccountRepository::find_by_id_or_name(self.pool, input.user_id, acc_q)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Conta '{acc_q}' não encontrada.")))?;
+            Some(acc.id)
+        } else {
+            None
+        };
+
+        let category_id = if let Some(ref cat_q) = input.category_query {
+            let cat = CategoryRepository::find_by_id_or_name(self.pool, input.user_id, cat_q)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Categoria '{cat_q}' não encontrada."))
+                })?;
+            Some(cat.id)
+        } else {
+            None
+        };
+
+        let (from_date, to_date) = if let Some(ref month_str) = input.month {
+            let parts: Vec<&str> = month_str.split('-').collect();
+            if parts.len() != 2 {
+                return Err(AppError::Validation(format!(
+                    "Formato de mês inválido '{month_str}'. Use o formato AAAA-MM (ex: 2026-10)."
+                )));
+            }
+            let year: i32 = parts[0]
+                .parse()
+                .map_err(|_| AppError::Validation(format!("Ano inválido '{}'", parts[0])))?;
+            let month: u32 = parts[1]
+                .parse()
+                .map_err(|_| AppError::Validation(format!("Mês inválido '{}'", parts[1])))?;
+            if !(1..=12).contains(&month) {
+                return Err(AppError::Validation(format!(
+                    "Mês inválido '{month}'. Deve ser entre 01 e 12."
+                )));
+            }
+
+            let start = NaiveDate::from_ymd_opt(year, month, 1).ok_or_else(|| {
+                AppError::Validation("Data de início de mês inválida.".to_string())
+            })?;
+
+            let next_month = if month == 12 {
+                NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap()
+            } else {
+                NaiveDate::from_ymd_opt(year, month + 1, 1).unwrap()
+            };
+            let end = next_month.pred_opt().unwrap_or(start);
+
+            (Some(start), Some(end))
+        } else if input.from_date.is_none() && input.to_date.is_none() {
+            // Padrão sem filtros de data: últimos 30 dias
+            let today = Local::now().date_naive();
+            let thirty_days_ago = today.checked_sub_days(Days::new(30)).unwrap_or(today);
+            (Some(thirty_days_ago), Some(today))
+        } else {
+            (input.from_date, input.to_date)
+        };
+
+        let filter = TransactionFilter {
+            user_id: input.user_id,
+            from_date,
+            to_date,
+            account_id,
+            category_id,
+            kind: input.kind,
+            limit: input.limit,
+        };
+
+        let transactions = TransactionRepository::list_with_details(self.pool, filter).await?;
+        Ok(transactions)
     }
 }
