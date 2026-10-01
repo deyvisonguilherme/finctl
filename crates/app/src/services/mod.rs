@@ -23,5 +23,7 @@ pub use report_service::{
     MonthlyReportInput, ReportService,
 };
 pub use transaction_service::{
-    CreateTransactionInput, EditTransactionInput, ListTransactionsInput, TransactionService,
+    CreateInstallmentsInput, CreateInstallmentsSummary, CreateTransactionInput,
+    DeleteInstallmentGroupSummary, EditInstallmentGroupInput, EditInstallmentGroupSummary,
+    EditTransactionInput, ListTransactionsInput, TransactionService,
 };
