@@ -10,14 +10,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
 
 ## Fase 0 — Fundação
 
-### [ ] F0-01 — Criar workspace Cargo e CI
+### [x] F0-01 — Criar workspace Cargo e CI
 - **Depende de:** —
 - **Escopo:** workspace com as crates `domain`, `storage`, `app` e `cli`; `rustfmt.toml` e `clippy` configurados; pipeline de CI (fmt, clippy, test).
 - **Critérios de aceite:**
   - `cargo build --workspace` compila sem warnings
   - CI roda fmt, clippy (`-D warnings`) e test
   - `finctl --version` imprime a versão
-- **Notas:**
+- **Notas:** Workspace Cargo inicializado com crates `domain`, `storage`, `app`, `cli`, rustfmt.toml e CI GitHub Actions configurados.
 
 ### [ ] F0-02 — Ambiente de desenvolvimento com PostgreSQL
 - **Depende de:** F0-01
