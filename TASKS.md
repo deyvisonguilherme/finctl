@@ -80,14 +80,14 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Nome duplicado retorna erro de validação (código `1`)
 - **Notas:** `Account` model, `AccountRepository`, `AccountService` e comandos `finctl account add|list` implementados com suporte a `--format table|json|csv` e validações de unicidade por usuário.
 
-### [ ] F1-02 — `finctl category add|list`
+### [x] F1-02 — `finctl category add|list`
 - **Depende de:** F0-05
 - **Escopo:** categorias de receita e despesa, com categoria pai opcional.
 - **Critérios de aceite:**
   - `finctl category add "Mercado" --kind expense [--parent "Alimentação"]`
   - Categoria pai deve ter o mesmo `tipo` da filha
   - `finctl category list` mostra a hierarquia
-- **Notas:**
+- **Notas:** `Category` model, `CategoryRepository`, `CategoryService` com validações de consistência de tipo entre pai e filha, limite de 2 níveis de profundidade e comando `finctl category add|list` com exibição em árvore.
 
 ### [ ] F1-03 — `finctl income add` e `finctl expense add`
 - **Depende de:** F1-01, F1-02

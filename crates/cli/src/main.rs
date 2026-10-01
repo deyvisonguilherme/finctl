@@ -3,6 +3,7 @@ pub mod format;
 
 use clap::{Parser, Subcommand};
 use commands::account::{handle_account_command, AccountCommands};
+use commands::category::{handle_category_command, CategoryCommands};
 use domain::UserId;
 use std::process::ExitCode;
 use std::str::FromStr;
@@ -30,6 +31,12 @@ enum Commands {
     Account {
         #[command(subcommand)]
         subcommand: AccountCommands,
+    },
+
+    /// Gerenciamento de categorias de receitas e despesas
+    Category {
+        #[command(subcommand)]
+        subcommand: CategoryCommands,
     },
 }
 
@@ -97,6 +104,14 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_account_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Category { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_category_command(subcommand, &pool, user_id).await
         }
     }
 }
