@@ -10,4 +10,7 @@ pub use category::Category;
 pub use errors::DomainError;
 pub use money::{format_decimal_pt_br, Money};
 pub use transaction::Transaction;
-pub use types::{AccountId, AccountKind, CategoryId, TransactionId, TransactionKind, UserId};
+pub use types::{
+    AccountId, AccountKind, AttachmentId, BudgetId, CardInvoiceId, CategoryId, RecurringRuleId,
+    TagId, TransactionId, TransactionKind, TransactionStatus, UserId,
+};

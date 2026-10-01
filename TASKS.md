@@ -156,7 +156,7 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
 
 ## Fase 2 — Relatórios e consultas
 
-### [ ] F2-00 — Preparação de schema para as Fases 2–4
+### [x] F2-00 — Preparação de schema para as Fases 2–4
 - **Depende de:** F1-08
 - **Escopo:** migration única, **aditiva** (colunas nullable ou com default), para evitar migrations conflitantes entre trilhas:
   - `transactions.status` (`paid` | `pending`, default `paid`)
@@ -171,7 +171,7 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - A migration aplica sobre um banco com dados do MVP sem alterar nenhum comportamento existente
   - Todos os testes da Fase 1 continuam passando
   - `CHECK` garante coerência (`installment_number <= installment_total`, status válido)
-- **Notas:**
+- **Notas:** Migration aditiva `20261001010000_schema_phases_2_to_4.sql` criada, cobrindo colunas em transactions/categories/accounts e novas tabelas para orçamentos, regras de recorrência, faturas de cartão, tags e anexos. Repositórios e entidades de domínio atualizados. Todos os testes unitários e de integração passaram com sucesso.
 
 ### [ ] F2-01 — Camada de agregação (storage/app)
 - **Depende de:** F2-00

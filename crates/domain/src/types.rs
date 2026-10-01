@@ -51,6 +51,55 @@ define_id!(UserId);
 define_id!(AccountId);
 define_id!(CategoryId);
 define_id!(TransactionId);
+define_id!(BudgetId);
+define_id!(RecurringRuleId);
+define_id!(CardInvoiceId);
+define_id!(TagId);
+define_id!(AttachmentId);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransactionStatus {
+    #[default]
+    Paid,
+    Pending,
+}
+
+impl TransactionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TransactionStatus::Paid => "paid",
+            TransactionStatus::Pending => "pending",
+        }
+    }
+
+    pub fn display_pt_br(&self) -> &'static str {
+        match self {
+            TransactionStatus::Paid => "Realizado",
+            TransactionStatus::Pending => "Previsto",
+        }
+    }
+}
+
+impl FromStr for TransactionStatus {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "paid" | "realizado" | "pago" => Ok(TransactionStatus::Paid),
+            "pending" | "previsto" | "pendente" => Ok(TransactionStatus::Pending),
+            _ => Err(DomainError::Validation(format!(
+                "Status de transação inválido '{s}'. Use 'paid' ou 'pending'."
+            ))),
+        }
+    }
+}
+
+impl fmt::Display for TransactionStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -102,6 +151,7 @@ pub enum AccountKind {
     Savings,
     Wallet,
     Investment,
+    CreditCard,
 }
 
 impl AccountKind {
@@ -111,6 +161,7 @@ impl AccountKind {
             AccountKind::Savings => "savings",
             AccountKind::Wallet => "wallet",
             AccountKind::Investment => "investment",
+            AccountKind::CreditCard => "credit_card",
         }
     }
 
@@ -120,6 +171,7 @@ impl AccountKind {
             AccountKind::Savings => "Poupança",
             AccountKind::Wallet => "Carteira",
             AccountKind::Investment => "Investimento",
+            AccountKind::CreditCard => "Cartão de Crédito",
         }
     }
 }
@@ -133,8 +185,11 @@ impl FromStr for AccountKind {
             "savings" | "poupanca" | "poupança" => Ok(AccountKind::Savings),
             "wallet" | "carteira" => Ok(AccountKind::Wallet),
             "investment" | "investimento" => Ok(AccountKind::Investment),
+            "credit_card" | "cartao_de_credito" | "cartão_de_crédito" | "cartao" | "credito" => {
+                Ok(AccountKind::CreditCard)
+            }
             _ => Err(DomainError::Validation(format!(
-                "Tipo de conta inválido '{s}'. Opções válidas: checking, savings, wallet, investment."
+                "Tipo de conta inválido '{s}'. Opções válidas: checking, savings, wallet, investment, credit_card."
             ))),
         }
     }
@@ -193,7 +248,31 @@ mod tests {
             "investment".parse::<AccountKind>().unwrap(),
             AccountKind::Investment
         );
+        assert_eq!(
+            "credit_card".parse::<AccountKind>().unwrap(),
+            AccountKind::CreditCard
+        );
+        assert_eq!(
+            "cartao".parse::<AccountKind>().unwrap(),
+            AccountKind::CreditCard
+        );
         assert!("outra".parse::<AccountKind>().is_err());
+    }
+
+    #[test]
+    fn test_transaction_status_parsing() {
+        assert_eq!(
+            "paid".parse::<TransactionStatus>().unwrap(),
+            TransactionStatus::Paid
+        );
+        assert_eq!(
+            "pending".parse::<TransactionStatus>().unwrap(),
+            TransactionStatus::Pending
+        );
+        assert_eq!(
+            "previsto".parse::<TransactionStatus>().unwrap(),
+            TransactionStatus::Pending
+        );
     }
 
     #[test]

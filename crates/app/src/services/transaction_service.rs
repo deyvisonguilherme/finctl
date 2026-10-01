@@ -165,6 +165,7 @@ impl<'a> TransactionService<'a> {
             category_id,
             kind: input.kind,
             limit: input.limit,
+            ..Default::default()
         };
 
         let transactions = TransactionRepository::list_with_details(self.pool, filter).await?;

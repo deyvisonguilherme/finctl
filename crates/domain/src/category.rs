@@ -10,6 +10,7 @@ pub struct Category {
     pub name: String,
     pub kind: TransactionKind,
     pub parent_id: Option<CategoryId>,
+    pub is_system: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -19,6 +20,24 @@ impl Category {
         name: String,
         kind: TransactionKind,
         parent_id: Option<CategoryId>,
+    ) -> Result<Self, DomainError> {
+        Self::new_with_system(user_id, name, kind, parent_id, false)
+    }
+
+    pub fn new_system(
+        user_id: UserId,
+        name: String,
+        kind: TransactionKind,
+    ) -> Result<Self, DomainError> {
+        Self::new_with_system(user_id, name, kind, None, true)
+    }
+
+    pub fn new_with_system(
+        user_id: UserId,
+        name: String,
+        kind: TransactionKind,
+        parent_id: Option<CategoryId>,
+        is_system: bool,
     ) -> Result<Self, DomainError> {
         let trimmed_name = name.trim().to_string();
         if trimmed_name.is_empty() {
@@ -38,6 +57,7 @@ impl Category {
             name: trimmed_name,
             kind,
             parent_id,
+            is_system,
             created_at: Utc::now(),
         })
     }
@@ -59,6 +79,7 @@ mod tests {
         .unwrap();
         assert_eq!(cat.name, "Alimentação");
         assert_eq!(cat.kind, TransactionKind::Expense);
+        assert!(!cat.is_system);
         assert!(cat.parent_id.is_none());
     }
 
