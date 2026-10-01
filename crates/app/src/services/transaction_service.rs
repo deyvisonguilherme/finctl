@@ -1,15 +1,15 @@
 use crate::errors::AppError;
 use chrono::{Days, Local, NaiveDate, Utc};
 use domain::{
-    calculate_installment_dates, split_installments, Money, Transaction, TransactionId,
-    TransactionKind, TransactionStatus, UserId,
+    calculate_installment_dates, split_installments, AccountKind, Money, Transaction,
+    TransactionId, TransactionKind, TransactionStatus, UserId,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use storage::{
-    AccountRepository, CategoryRepository, TransactionDetails, TransactionFilter,
-    TransactionRepository,
+    AccountRepository, CardInvoiceRepository, CategoryRepository, TransactionDetails,
+    TransactionFilter, TransactionRepository,
 };
 use uuid::Uuid;
 
@@ -150,6 +150,16 @@ impl<'a> TransactionService<'a> {
             None,
             None,
         )?;
+
+        if account.kind == AccountKind::CreditCard {
+            CardInvoiceRepository::get_or_create_for_transaction(
+                self.pool,
+                input.user_id,
+                &account,
+                input.date,
+            )
+            .await?;
+        }
 
         TransactionRepository::create(self.pool, &transaction).await?;
         Ok(transaction)
@@ -345,6 +355,18 @@ impl<'a> TransactionService<'a> {
                 None,
             )?;
             txs.push(tx);
+        }
+
+        if account.kind == AccountKind::CreditCard {
+            for tx in &txs {
+                CardInvoiceRepository::get_or_create_for_transaction(
+                    self.pool,
+                    input.user_id,
+                    &account,
+                    tx.date,
+                )
+                .await?;
+            }
         }
 
         TransactionRepository::create_batch(self.pool, &txs).await?;

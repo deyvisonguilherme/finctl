@@ -12,13 +12,25 @@ pub enum AccountCommands {
         /// Nome da conta (ex: "Nubank", "Carteira")
         name: String,
 
-        /// Tipo da conta: checking (corrente), savings (poupança), wallet (carteira), investment (investimento)
+        /// Tipo da conta: checking (corrente), savings (poupança), wallet (carteira), investment (investimento), credit_card (cartão de crédito)
         #[arg(short, long)]
         kind: String,
 
         /// Saldo inicial da conta (ex: 1500,00 ou 1500.00)
         #[arg(short, long, default_value = "0,00")]
         initial_balance: String,
+
+        /// Dia de fechamento da fatura (1-31, para cartões de crédito)
+        #[arg(long = "closing-day")]
+        closing_day: Option<u8>,
+
+        /// Dia de vencimento da fatura (1-31, para cartões de crédito)
+        #[arg(long = "due-day")]
+        due_day: Option<u8>,
+
+        /// Limite de crédito (para cartões de crédito)
+        #[arg(long = "credit-limit", alias = "limit")]
+        credit_limit: Option<String>,
     },
 
     /// Lista as contas cadastradas
@@ -41,6 +53,9 @@ pub async fn handle_account_command(
             name,
             kind,
             initial_balance,
+            closing_day,
+            due_day,
+            credit_limit,
         } => {
             let account_kind: AccountKind = kind.parse().map_err(|e| (format!("{e}"), 1))?;
             let balance = Money::parse(&initial_balance)
@@ -56,8 +71,43 @@ pub async fn handle_account_command(
                 })
                 .map_err(|e| (format!("{e}"), 1))?;
 
+            let parsed_limit = if let Some(ref lim) = credit_limit {
+                let clean = lim.replace(',', ".");
+                let dec = clean
+                    .parse::<rust_decimal::Decimal>()
+                    .map_err(|_| (format!("Valor de limite de crédito inválido '{lim}'"), 1))?;
+                Some(Money::from_decimal_non_negative(dec).map_err(|e| (format!("{e}"), 1))?)
+            } else {
+                None
+            };
+
+            if account_kind == AccountKind::CreditCard {
+                if closing_day.is_none() {
+                    return Err((
+                        "Para contas do tipo 'credit_card', é obrigatório informar o dia de fechamento (--closing-day)."
+                            .to_string(),
+                        1,
+                    ));
+                }
+                if due_day.is_none() {
+                    return Err((
+                        "Para contas do tipo 'credit_card', é obrigatório informar o dia de vencimento (--due-day)."
+                            .to_string(),
+                        1,
+                    ));
+                }
+            }
+
             let account = service
-                .create_account(user_id, name, account_kind, balance)
+                .create_account_with_input(app::CreateAccountInput {
+                    user_id,
+                    name,
+                    kind: account_kind,
+                    initial_balance: balance,
+                    closing_day,
+                    due_day,
+                    credit_limit: parsed_limit,
+                })
                 .await
                 .map_err(|e| match e {
                     app::AppError::Storage(storage::StorageError::UniqueViolation(msg)) => (msg, 1),
@@ -87,14 +137,28 @@ pub async fn handle_account_command(
                 }
                 OutputFormat::Csv => {
                     let mut wtr = csv::Writer::from_writer(std::io::stdout());
-                    wtr.write_record(["id", "name", "kind", "initial_balance", "created_at"])
-                        .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
+                    wtr.write_record([
+                        "id",
+                        "name",
+                        "kind",
+                        "initial_balance",
+                        "closing_day",
+                        "due_day",
+                        "credit_limit",
+                        "created_at",
+                    ])
+                    .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                     for acc in accounts {
                         wtr.write_record([
                             acc.id.to_string(),
                             acc.name,
                             acc.kind.to_string(),
                             format!("{:.2}", acc.initial_balance.as_decimal()),
+                            acc.closing_day.map(|d| d.to_string()).unwrap_or_default(),
+                            acc.due_day.map(|d| d.to_string()).unwrap_or_default(),
+                            acc.credit_limit
+                                .map(|l| format!("{:.2}", l.as_decimal()))
+                                .unwrap_or_default(),
                             acc.created_at.to_rfc3339(),
                         ])
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
@@ -114,22 +178,61 @@ fn print_accounts_table(accounts: &[Account]) {
         return;
     }
 
+    let has_credit_cards = accounts.iter().any(|a| a.kind == AccountKind::CreditCard);
+
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
-    table.set_header(vec![
-        Cell::new("ID").fg(Color::Cyan),
-        Cell::new("Nome").fg(Color::Cyan),
-        Cell::new("Tipo").fg(Color::Cyan),
-        Cell::new("Saldo Inicial").fg(Color::Cyan),
-    ]);
-
-    for acc in accounts {
-        table.add_row(vec![
-            Cell::new(acc.id.to_string()),
-            Cell::new(&acc.name),
-            Cell::new(acc.kind.display_pt_br()),
-            Cell::new(acc.initial_balance.format_pt_br()).fg(Color::Green),
+    if has_credit_cards {
+        table.set_header(vec![
+            Cell::new("ID").fg(Color::Cyan),
+            Cell::new("Nome").fg(Color::Cyan),
+            Cell::new("Tipo").fg(Color::Cyan),
+            Cell::new("Saldo Inicial").fg(Color::Cyan),
+            Cell::new("Fechamento").fg(Color::Cyan),
+            Cell::new("Vencimento").fg(Color::Cyan),
+            Cell::new("Limite").fg(Color::Cyan),
         ]);
+
+        for acc in accounts {
+            let closing_str = acc
+                .closing_day
+                .map(|d| format!("Dia {d}"))
+                .unwrap_or_else(|| "-".to_string());
+            let due_str = acc
+                .due_day
+                .map(|d| format!("Dia {d}"))
+                .unwrap_or_else(|| "-".to_string());
+            let limit_str = acc
+                .credit_limit
+                .map(|l| l.format_pt_br())
+                .unwrap_or_else(|| "-".to_string());
+
+            table.add_row(vec![
+                Cell::new(acc.id.to_string()),
+                Cell::new(&acc.name),
+                Cell::new(acc.kind.display_pt_br()),
+                Cell::new(acc.initial_balance.format_pt_br()).fg(Color::Green),
+                Cell::new(closing_str),
+                Cell::new(due_str),
+                Cell::new(limit_str).fg(Color::Yellow),
+            ]);
+        }
+    } else {
+        table.set_header(vec![
+            Cell::new("ID").fg(Color::Cyan),
+            Cell::new("Nome").fg(Color::Cyan),
+            Cell::new("Tipo").fg(Color::Cyan),
+            Cell::new("Saldo Inicial").fg(Color::Cyan),
+        ]);
+
+        for acc in accounts {
+            table.add_row(vec![
+                Cell::new(acc.id.to_string()),
+                Cell::new(&acc.name),
+                Cell::new(acc.kind.display_pt_br()),
+                Cell::new(acc.initial_balance.format_pt_br()).fg(Color::Green),
+            ]);
+        }
     }
 
     println!("{table}");

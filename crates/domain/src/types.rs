@@ -103,6 +103,56 @@ impl fmt::Display for TransactionStatus {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum InvoiceStatus {
+    #[default]
+    Open,
+    Closed,
+    Paid,
+}
+
+impl InvoiceStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+            Self::Paid => "paid",
+        }
+    }
+
+    pub fn display_pt_br(&self) -> &'static str {
+        match self {
+            Self::Open => "Aberta",
+            Self::Closed => "Fechada",
+            Self::Paid => "Paga",
+        }
+    }
+}
+
+impl FromStr for InvoiceStatus {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "open" | "aberta" | "aberto" => Ok(Self::Open),
+            "closed" | "fechada" | "fechado" => Ok(Self::Closed),
+            "paid" | "paga" | "pago" => Ok(Self::Paid),
+            _ => Err(DomainError::Validation(format!(
+                "Status de fatura inválido '{s}'. Use 'open', 'closed' ou 'paid'."
+            ))),
+        }
+    }
+}
+
+impl fmt::Display for InvoiceStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionKind {

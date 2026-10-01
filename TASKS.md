@@ -298,14 +298,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - `tx edit` em lançamento de transferência é bloqueado com mensagem orientando a refazer a transferência
 - **Notas:** Implementado comando `finctl transfer add` com criação atômica das pernas de débito (origem) e crédito (destino) vinculadas pelo mesmo `transfer_id` e categorias de sistema "Transferência" e "Transferência (Receita)". Os saldos das contas refletem a movimentação, enquanto relatórios agregados e categorizados excluem lançamentos com `transfer_id IS NOT NULL`. A edição individual (`tx edit`) de qualquer perna é bloqueada por validação para preservar a integridade contábil, e a exclusão (`tx rm`) de uma perna remove automaticamente a contraparte vinculada. Testes de integração validam o fluxo completo, isolamento de relatórios e proteção contra edição.
 
-### [ ] F4-02 — Cartão de crédito: modelo e faturas
+### [x] F4-02 — Cartão de crédito: modelo e faturas
 - **Depende de:** F4-01, F3-01
 - **Escopo:** `accounts.kind = credit_card` com `closing_day`, `due_day` e `credit_limit` opcional; migration `card_invoices` (conta, mês de referência, datas de fechamento e vencimento, status `open|closed|paid`); atribuição automática da compra à fatura (compra após o fechamento vai para a fatura seguinte); parcelas (F3-05) distribuídas nas faturas seguintes.
 - **Critérios de aceite:**
   - Compra no dia do fechamento e no dia seguinte caem em faturas diferentes (teste explícito)
   - Faturas são criadas sob demanda, sem duplicar
   - Parcelamento de N parcelas gera lançamentos em N faturas consecutivas
-- **Notas:**
+- **Notas:** Implementado suporte a contas de cartão de crédito (`AccountKind::CreditCard`) com dia de fechamento (`closing_day`), dia de vencimento (`due_day`) e limite (`credit_limit`). A entidade `CardInvoice` e o repositório `CardInvoiceRepository` gerenciam os ciclos de faturamento e criam faturas sob demanda (`get_or_create_for_transaction`). Compras realizadas até a data de fechamento pertencem à fatura do mês atual, enquanto compras após o fechamento avançam automaticamente para a fatura seguinte (com ajuste de meses mais curtos D-05). Parcelamentos distribuem as parcelas em faturas consecutivas. Testes unitários e de integração validam todas as regras de atribuição e persistência.
 
 ### [ ] F4-03 — `finctl card invoice`
 - **Depende de:** F4-02
