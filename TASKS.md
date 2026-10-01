@@ -190,14 +190,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Valores conferem com cálculo manual em teste
 - **Notas:** `finctl report monthly` implementado com suporte a `--month`, `--year`, `--account`, `--include-pending`, formatos table/json/csv e cálculo de taxa de poupança (savings rate). Testes de integração cobrem múltiplos cenários.
 
-### [ ] F2-03 — `finctl report categories`
+### [x] F2-03 — `finctl report categories`
 - **Depende de:** F2-01
 - **Escopo:** `finctl report categories [--month YYYY-MM] [--kind expense|income] [--depth 1|2]` lista total e percentual por categoria, ordenado do maior para o menor.
 - **Critérios de aceite:**
   - Percentuais somam 100% (tratar arredondamento)
   - `--depth 1` agrupa subcategorias na categoria pai
   - Período sem lançamentos mostra mensagem amigável, não erro
-- **Notas:**
+- **Notas:** `finctl report categories` implementado com suporte a `--month`, `--kind`, `--depth 1|2`, `--account`, `--include-pending`, saídas formatadas (table, json, csv), mensagem amigável para períodos vazios e soma correta de percentuais com linha de TOTAL.
 
 ### [ ] F2-04 — `finctl report compare`
 - **Depende de:** F2-01

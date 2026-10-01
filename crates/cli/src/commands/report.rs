@@ -1,10 +1,12 @@
 use crate::format::OutputFormat;
-use app::{MonthlyReportInput, ReportService};
+use app::{CategoryReportInput, MonthlyReportInput, ReportService};
 use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Row, Table};
-use domain::{format_decimal_pt_br, MonthlyReportItem, UserId};
+use domain::{
+    format_decimal_pt_br, CategoryReportSummary, MonthlyReportItem, TransactionKind, UserId,
+};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use sqlx::PgPool;
@@ -13,6 +15,9 @@ use sqlx::PgPool;
 pub enum ReportCommands {
     /// Relatório mensal consolidado de receitas, despesas e economia
     Monthly(MonthlyArgs),
+
+    /// Relatório de gastos ou receitas agrupados por categoria
+    Categories(CategoriesArgs),
 }
 
 #[derive(Args, Debug)]
@@ -38,6 +43,33 @@ pub struct MonthlyArgs {
     pub format: OutputFormat,
 }
 
+#[derive(Args, Debug)]
+pub struct CategoriesArgs {
+    /// Mês de referência no formato AAAA-MM (ex: 2026-10) [padrão: mês atual]
+    #[arg(short, long)]
+    pub month: Option<String>,
+
+    /// Filtrar por tipo de transação (income/receita ou expense/despesa)
+    #[arg(short, long)]
+    pub kind: Option<TransactionKind>,
+
+    /// Profundidade da agregação: 1 (agrupa subcategorias na pai) ou 2 (detalha por subcategoria) [padrão: 2]
+    #[arg(short, long, default_value_t = 2)]
+    pub depth: u32,
+
+    /// Filtrar por nome ou UUID da conta
+    #[arg(short, long)]
+    pub account: Option<String>,
+
+    /// Incluir lançamentos previstos/pendentes no relatório
+    #[arg(long)]
+    pub include_pending: bool,
+
+    /// Formato de saída dos dados
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
+    pub format: OutputFormat,
+}
+
 #[derive(Serialize)]
 struct MonthlyExportItem {
     month: String,
@@ -47,6 +79,23 @@ struct MonthlyExportItem {
     savings_rate: Decimal,
 }
 
+#[derive(Serialize)]
+struct CategoryExportItem {
+    category_name: String,
+    parent_name: Option<String>,
+    kind: String,
+    transaction_count: i64,
+    amount: Decimal,
+    percentage: Decimal,
+}
+
+#[derive(Serialize)]
+struct CategoryExportSummary {
+    kind: Option<String>,
+    total_amount: Decimal,
+    items: Vec<CategoryExportItem>,
+}
+
 pub async fn handle_report_command(
     pool: &PgPool,
     user_id: UserId,
@@ -54,6 +103,7 @@ pub async fn handle_report_command(
 ) -> Result<(), (String, u8)> {
     match command {
         ReportCommands::Monthly(args) => handle_monthly(pool, user_id, args).await,
+        ReportCommands::Categories(args) => handle_categories(pool, user_id, args).await,
     }
 }
 
@@ -112,6 +162,91 @@ async fn handle_monthly(
                     i.total_expense.as_decimal(),
                     i.net_balance,
                     i.savings_rate
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_categories(
+    pool: &PgPool,
+    user_id: UserId,
+    args: CategoriesArgs,
+) -> Result<(), (String, u8)> {
+    if args.depth != 1 && args.depth != 2 {
+        return Err(("O parâmetro --depth deve ser 1 ou 2.".to_string(), 1));
+    }
+
+    let service = ReportService::new(pool);
+    let summary = service
+        .category_report(CategoryReportInput {
+            user_id,
+            month: args.month.clone(),
+            from_date: None,
+            to_date: None,
+            account_query: args.account.clone(),
+            kind: args.kind,
+            depth: args.depth,
+            include_pending: args.include_pending,
+        })
+        .await
+        .map_err(|e| (format!("Erro ao gerar relatório de categorias: {e}"), 1))?;
+
+    if summary.items.is_empty() {
+        if args.format == OutputFormat::Table {
+            println!("Nenhuma movimentação encontrada para o período e filtros informados.");
+        } else if args.format == OutputFormat::Json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&CategoryExportSummary {
+                    kind: args.kind.map(|k| k.as_str().to_string()),
+                    total_amount: Decimal::ZERO,
+                    items: vec![],
+                })
+                .unwrap_or_default()
+            );
+        } else {
+            println!("category_name,parent_name,kind,transaction_count,amount,percentage");
+        }
+        return Ok(());
+    }
+
+    match args.format {
+        OutputFormat::Table => print_categories_table(&summary, args.depth),
+        OutputFormat::Json => {
+            let export = CategoryExportSummary {
+                kind: summary.kind.map(|k| k.as_str().to_string()),
+                total_amount: summary.total_amount.as_decimal(),
+                items: summary
+                    .items
+                    .iter()
+                    .map(|i| CategoryExportItem {
+                        category_name: i.category_name.clone(),
+                        parent_name: i.parent_name.clone(),
+                        kind: i.kind.as_str().to_string(),
+                        transaction_count: i.transaction_count,
+                        amount: i.total_amount.as_decimal(),
+                        percentage: i.percentage,
+                    })
+                    .collect(),
+            };
+            let json = serde_json::to_string_pretty(&export)
+                .map_err(|e| (format!("Erro ao serializar JSON: {e}"), 1))?;
+            println!("{json}");
+        }
+        OutputFormat::Csv => {
+            println!("category_name,parent_name,kind,transaction_count,amount,percentage");
+            for i in &summary.items {
+                println!(
+                    "\"{}\",\"{}\",{},{},{},{}",
+                    i.category_name,
+                    i.parent_name.as_deref().unwrap_or(""),
+                    i.kind.as_str(),
+                    i.transaction_count,
+                    i.total_amount.as_decimal(),
+                    i.percentage
                 );
             }
         }
@@ -199,6 +334,86 @@ fn print_monthly_table(items: &[MonthlyReportItem], show_total: bool) {
 
         table.add_row(total_row);
     }
+
+    println!("{table}");
+}
+
+fn print_categories_table(summary: &CategoryReportSummary, depth: u32) {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(UTF8_ROUND_CORNERS);
+
+    if depth == 1 {
+        table.set_header(vec![
+            Cell::new("Categoria").set_alignment(CellAlignment::Left),
+            Cell::new("Tipo").set_alignment(CellAlignment::Center),
+            Cell::new("Lançamentos").set_alignment(CellAlignment::Right),
+            Cell::new("Total").set_alignment(CellAlignment::Right),
+            Cell::new("% do Total").set_alignment(CellAlignment::Right),
+        ]);
+    } else {
+        table.set_header(vec![
+            Cell::new("Categoria").set_alignment(CellAlignment::Left),
+            Cell::new("Categoria Pai").set_alignment(CellAlignment::Left),
+            Cell::new("Tipo").set_alignment(CellAlignment::Center),
+            Cell::new("Lançamentos").set_alignment(CellAlignment::Right),
+            Cell::new("Total").set_alignment(CellAlignment::Right),
+            Cell::new("% do Total").set_alignment(CellAlignment::Right),
+        ]);
+    }
+
+    let mut total_tx_count = 0i64;
+
+    for item in &summary.items {
+        total_tx_count += item.transaction_count;
+
+        let kind_color = match item.kind {
+            TransactionKind::Income => Color::Green,
+            TransactionKind::Expense => Color::Red,
+        };
+
+        if depth == 1 {
+            table.add_row(vec![
+                Cell::new(&item.category_name),
+                Cell::new(item.kind.display_pt_br())
+                    .set_alignment(CellAlignment::Center)
+                    .fg(kind_color),
+                Cell::new(item.transaction_count.to_string()).set_alignment(CellAlignment::Right),
+                Cell::new(item.total_amount.format_pt_br())
+                    .set_alignment(CellAlignment::Right)
+                    .fg(kind_color),
+                Cell::new(format!("{}%", item.percentage)).set_alignment(CellAlignment::Right),
+            ]);
+        } else {
+            table.add_row(vec![
+                Cell::new(&item.category_name),
+                Cell::new(item.parent_name.as_deref().unwrap_or("-")),
+                Cell::new(item.kind.display_pt_br())
+                    .set_alignment(CellAlignment::Center)
+                    .fg(kind_color),
+                Cell::new(item.transaction_count.to_string()).set_alignment(CellAlignment::Right),
+                Cell::new(item.total_amount.format_pt_br())
+                    .set_alignment(CellAlignment::Right)
+                    .fg(kind_color),
+                Cell::new(format!("{}%", item.percentage)).set_alignment(CellAlignment::Right),
+            ]);
+        }
+    }
+
+    let mut total_row = Row::new();
+    total_row.add_cell(Cell::new("TOTAL"));
+    if depth == 2 {
+        total_row.add_cell(Cell::new("-"));
+    }
+    total_row.add_cell(Cell::new("-").set_alignment(CellAlignment::Center));
+    total_row.add_cell(Cell::new(total_tx_count.to_string()).set_alignment(CellAlignment::Right));
+    total_row.add_cell(
+        Cell::new(summary.total_amount.format_pt_br()).set_alignment(CellAlignment::Right),
+    );
+    total_row.add_cell(Cell::new("100,00%").set_alignment(CellAlignment::Right));
+
+    table.add_row(total_row);
 
     println!("{table}");
 }
