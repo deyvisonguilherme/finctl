@@ -89,7 +89,7 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - `finctl category list` mostra a hierarquia
 - **Notas:** `Category` model, `CategoryRepository`, `CategoryService` com validações de consistência de tipo entre pai e filha, limite de 2 níveis de profundidade e comando `finctl category add|list` com exibição em árvore.
 
-### [ ] F1-03 — `finctl income add` e `finctl expense add`
+### [x] F1-03 — `finctl income add` e `finctl expense add`
 - **Depende de:** F1-01, F1-02
 - **Escopo:** registrar lançamentos com conta, categoria, valor, data (padrão: hoje) e descrição.
 - **Critérios de aceite:**
@@ -97,7 +97,7 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - Aceita valor com vírgula ou ponto; rejeita valor ≤ 0
   - Categoria precisa ser compatível com o tipo (receita × despesa)
   - Imprime o ID do lançamento criado
-- **Notas:**
+- **Notas:** `Transaction` model, `TransactionRepository`, `TransactionService` e comandos `finctl income add` e `finctl expense add` implementados com validações de compatibilidade de categoria, formatação de moeda e datas.
 
 ### [ ] F1-04 — `finctl tx list` com filtros
 - **Depende de:** F1-03
