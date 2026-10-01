@@ -229,14 +229,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
 
 ## Fase 3 — Planejamento
 
-### [ ] F3-01 — Status previsto × realizado
+### [x] F3-01 — Status previsto × realizado
 - **Depende de:** F2-00, F1-06
 - **Escopo:** flag `--pending` em `income add`/`expense add`; `finctl tx pay <id> [--date]` marca como realizado; `tx list --status paid|pending`; `balance --projected [--at <data>]` inclui previstos até a data.
 - **Critérios de aceite:**
   - `balance` e relatórios sem flags ignoram `pending`
   - `tx pay` em lançamento já pago retorna erro claro
   - Testes cobrem saldo realizado × projetado
-- **Notas:**
+- **Notas:** Implementado suporte a lançamentos previstos (`TransactionStatus::Pending`) e realizados (`TransactionStatus::Paid`). Flags `--pending` adicionadas a `income add` e `expense add`, comando `finctl tx pay <id> [--date]` para realização de transações, filtro `--status paid|pending` em `finctl tx list`, e cálculo de saldo projetado com `finctl balance --projected [--at <data>]`. Testes de integração validam fluxo completo de saldos e proteção contra pagamento duplicado.
 
 ### [ ] F3-02 — Orçamentos por categoria
 - **Depende de:** F2-01, F3-01

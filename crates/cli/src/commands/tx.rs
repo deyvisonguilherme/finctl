@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 use dialoguer::Confirm;
-use domain::{Money, TransactionId, TransactionKind, UserId};
+use domain::{Money, TransactionId, TransactionKind, TransactionStatus, UserId};
 use sqlx::PgPool;
 use storage::TransactionDetails;
 
@@ -36,6 +36,10 @@ pub enum TxCommands {
         #[arg(short, long)]
         kind: Option<String>,
 
+        /// Filtrar por status: paid (realizado) ou pending (previsto)
+        #[arg(long)]
+        status: Option<String>,
+
         /// Limitar o número de registros exibidos
         #[arg(short, long)]
         limit: Option<i64>,
@@ -43,6 +47,16 @@ pub enum TxCommands {
         /// Formato de saída (table, json, csv)
         #[arg(short, long, default_value_t = OutputFormat::Table)]
         format: OutputFormat,
+    },
+
+    /// Marca um lançamento previsto (pendente) como realizado (pago)
+    Pay {
+        /// ID do lançamento
+        id: String,
+
+        /// Nova data de realização no formato AAAA-MM-DD (opcional; padrão: mantém a data original)
+        #[arg(short, long)]
+        date: Option<String>,
     },
 
     /// Edita os campos de um lançamento existente
@@ -97,6 +111,7 @@ pub async fn handle_tx_command(
             account,
             category,
             kind,
+            status,
             limit,
             format,
         } => {
@@ -127,6 +142,15 @@ pub async fn handle_tx_command(
                 None
             };
 
+            let tx_status = if let Some(s) = status {
+                Some(
+                    s.parse::<TransactionStatus>()
+                        .map_err(|e| (format!("{e}"), 1))?,
+                )
+            } else {
+                None
+            };
+
             let transactions = service
                 .list_transactions(ListTransactionsInput {
                     user_id,
@@ -136,6 +160,7 @@ pub async fn handle_tx_command(
                     account_query: account,
                     category_query: category,
                     kind: tx_kind,
+                    status: tx_status,
                     limit,
                 })
                 .await
@@ -161,6 +186,7 @@ pub async fn handle_tx_command(
                         "account",
                         "category",
                         "amount",
+                        "status",
                         "description",
                     ])
                     .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
@@ -173,6 +199,7 @@ pub async fn handle_tx_command(
                             tx.account_name,
                             tx.category_name,
                             format!("{:.2}", tx.amount.as_decimal()),
+                            tx.status.to_string(),
                             tx.description,
                         ])
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
@@ -181,6 +208,36 @@ pub async fn handle_tx_command(
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                 }
             }
+            Ok(())
+        }
+        TxCommands::Pay { id, date } => {
+            let tx_id = id
+                .parse::<TransactionId>()
+                .map_err(|e| (format!("{e}"), 1))?;
+            let parsed_date = if let Some(d) = date {
+                Some(
+                    NaiveDate::parse_from_str(&d, "%Y-%m-%d")
+                        .map_err(|e| (format!("Data inválida '{d}'. Use AAAA-MM-DD: {e}"), 1))?,
+                )
+            } else {
+                None
+            };
+
+            let paid_tx = service
+                .pay_transaction(user_id, tx_id, parsed_date)
+                .await
+                .map_err(|e| match e {
+                    app::AppError::NotFound(n) => (n, 1),
+                    app::AppError::Validation(v) => (v, 1),
+                    app::AppError::Domain(d) => (format!("{d}"), 1),
+                    other => (format!("{other}"), 2),
+                })?;
+
+            println!(
+                "Lançamento '{}' marcado como realizado (pago) com sucesso! Data: {}",
+                paid_tx.id,
+                paid_tx.date.format("%d/%m/%Y")
+            );
             Ok(())
         }
         TxCommands::Edit {
@@ -278,6 +335,7 @@ fn print_transactions_table(transactions: &[TransactionDetails]) {
         Cell::new("Conta").fg(Color::Cyan),
         Cell::new("Categoria").fg(Color::Cyan),
         Cell::new("Valor").fg(Color::Cyan),
+        Cell::new("Status").fg(Color::Cyan),
         Cell::new("Descrição").fg(Color::Cyan),
     ]);
 
@@ -293,6 +351,11 @@ fn print_transactions_table(transactions: &[TransactionDetails]) {
             ),
         };
 
+        let status_cell = match tx.status {
+            TransactionStatus::Paid => Cell::new("pago").fg(Color::Green),
+            TransactionStatus::Pending => Cell::new("previsto").fg(Color::Yellow),
+        };
+
         table.add_row(vec![
             Cell::new(tx.id.to_string()),
             Cell::new(tx.date.to_string()),
@@ -300,6 +363,7 @@ fn print_transactions_table(transactions: &[TransactionDetails]) {
             Cell::new(&tx.account_name),
             Cell::new(&tx.category_name),
             amount_cell,
+            status_cell,
             Cell::new(&tx.description),
         ]);
     }

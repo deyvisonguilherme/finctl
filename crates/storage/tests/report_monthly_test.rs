@@ -60,6 +60,7 @@ async fn test_report_monthly_scenarios() {
             amount: Money::new(dec!(4000.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 8, 5).unwrap(),
             description: "Salário Ago".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -73,6 +74,7 @@ async fn test_report_monthly_scenarios() {
             amount: Money::new(dec!(1500.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 8, 10).unwrap(),
             description: "Aluguel Ago".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -87,6 +89,7 @@ async fn test_report_monthly_scenarios() {
             amount: Money::new(dec!(4500.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 9, 5).unwrap(),
             description: "Salário Set".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -100,6 +103,7 @@ async fn test_report_monthly_scenarios() {
             amount: Money::new(dec!(2000.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 9, 10).unwrap(),
             description: "Aluguel Set".to_string(),
+            status: None,
         })
         .await
         .unwrap();

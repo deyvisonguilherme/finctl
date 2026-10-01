@@ -55,6 +55,7 @@ async fn test_report_compare_scenarios() {
             amount: Money::new(dec!(500.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 8, 10).unwrap(),
             description: "Mercado Ago".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -69,6 +70,7 @@ async fn test_report_compare_scenarios() {
             amount: Money::new(dec!(600.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 9, 10).unwrap(),
             description: "Mercado Set".to_string(),
+            status: None,
         })
         .await
         .unwrap();
@@ -82,6 +84,7 @@ async fn test_report_compare_scenarios() {
             amount: Money::new(dec!(200.00)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 9, 15).unwrap(),
             description: "Lazer Set".to_string(),
+            status: None,
         })
         .await
         .unwrap();

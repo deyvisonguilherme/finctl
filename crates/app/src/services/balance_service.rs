@@ -20,6 +20,7 @@ pub struct AccountBalance {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceReport {
     pub as_of_date: Option<NaiveDate>,
+    pub projected: bool,
     pub accounts: Vec<AccountBalance>,
     pub total_initial_balance: Decimal,
     pub total_income: Decimal,
@@ -40,6 +41,7 @@ impl<'a> BalanceService<'a> {
         &self,
         user_id: UserId,
         at_date: Option<NaiveDate>,
+        projected: bool,
     ) -> Result<BalanceReport, AppError> {
         let rows = sqlx::query(
             r#"
@@ -53,6 +55,7 @@ impl<'a> BalanceService<'a> {
             FROM accounts a
             LEFT JOIN transactions t ON a.id = t.account_id AND t.user_id = a.user_id 
                 AND ($2::DATE IS NULL OR t.date <= $2)
+                AND ($3::BOOLEAN IS TRUE OR t.status = 'paid')
             WHERE a.user_id = $1
             GROUP BY a.id, a.name, a.kind, a.initial_balance
             ORDER BY a.name ASC
@@ -60,6 +63,7 @@ impl<'a> BalanceService<'a> {
         )
         .bind(user_id.as_uuid())
         .bind(at_date)
+        .bind(projected)
         .fetch_all(self.pool)
         .await
         .map_err(storage::StorageError::Database)?;
@@ -120,6 +124,7 @@ impl<'a> BalanceService<'a> {
 
         Ok(BalanceReport {
             as_of_date: at_date,
+            projected,
             accounts,
             total_initial_balance: sum_initial,
             total_income: sum_income,

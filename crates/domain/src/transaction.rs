@@ -118,6 +118,19 @@ impl Transaction {
             updated_at: now,
         })
     }
+    pub fn mark_as_paid(&mut self, payment_date: Option<NaiveDate>) -> Result<(), DomainError> {
+        if self.status == TransactionStatus::Paid {
+            return Err(DomainError::Validation(
+                "Lançamento já está marcado como realizado (pago).".to_string(),
+            ));
+        }
+        self.status = TransactionStatus::Paid;
+        if let Some(date) = payment_date {
+            self.date = date;
+        }
+        self.updated_at = Utc::now();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -147,5 +160,44 @@ mod tests {
         assert_eq!(tx.amount, amount);
         assert_eq!(tx.description, "Mercado Mensal");
         assert_eq!(tx.status, TransactionStatus::Paid);
+    }
+
+    #[test]
+    fn test_mark_as_paid() {
+        let user_id = UserId::generate();
+        let account_id = AccountId::generate();
+        let category_id = CategoryId::generate();
+        let amount = Money::new(dec!(89.90)).unwrap();
+        let date = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+
+        let mut tx = Transaction::new_full(
+            user_id,
+            account_id,
+            category_id,
+            TransactionKind::Expense,
+            amount,
+            date,
+            "Conta de Luz".to_string(),
+            TransactionStatus::Pending,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(tx.status, TransactionStatus::Pending);
+
+        let new_date = NaiveDate::from_ymd_opt(2026, 10, 5).unwrap();
+        tx.mark_as_paid(Some(new_date)).unwrap();
+        assert_eq!(tx.status, TransactionStatus::Paid);
+        assert_eq!(tx.date, new_date);
+
+        // Trying to mark as paid again fails
+        let err = tx.mark_as_paid(None).unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 }

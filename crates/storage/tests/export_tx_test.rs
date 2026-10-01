@@ -49,6 +49,7 @@ async fn test_export_tx_data_and_formatting() {
             amount: Money::new(dec!(1234.56)).unwrap(),
             date: NaiveDate::from_ymd_opt(2026, 10, 15).unwrap(),
             description: "Supermercado Semanal".to_string(),
+            status: None,
         })
         .await
         .unwrap();

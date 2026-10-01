@@ -112,6 +112,7 @@ async fn handle_export_tx(
             account_query: args.account,
             category_query: args.category,
             kind: args.kind,
+            status: None,
             limit: args.limit,
         })
         .await

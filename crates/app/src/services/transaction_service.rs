@@ -1,6 +1,6 @@
 use crate::errors::AppError;
 use chrono::{Days, Local, NaiveDate, Utc};
-use domain::{Money, Transaction, TransactionId, TransactionKind, UserId};
+use domain::{Money, Transaction, TransactionId, TransactionKind, TransactionStatus, UserId};
 use sqlx::PgPool;
 use storage::{
     AccountRepository, CategoryRepository, TransactionDetails, TransactionFilter,
@@ -15,6 +15,7 @@ pub struct CreateTransactionInput {
     pub amount: Money,
     pub date: NaiveDate,
     pub description: String,
+    pub status: Option<TransactionStatus>,
 }
 
 #[derive(Default, Debug)]
@@ -26,6 +27,7 @@ pub struct ListTransactionsInput {
     pub account_query: Option<String>,
     pub category_query: Option<String>,
     pub kind: Option<TransactionKind>,
+    pub status: Option<TransactionStatus>,
     pub limit: Option<i64>,
 }
 
@@ -79,7 +81,8 @@ impl<'a> TransactionService<'a> {
             )));
         }
 
-        let transaction = Transaction::new(
+        let status = input.status.unwrap_or(TransactionStatus::Paid);
+        let transaction = Transaction::new_full(
             input.user_id,
             account.id,
             category.id,
@@ -87,10 +90,35 @@ impl<'a> TransactionService<'a> {
             input.amount,
             input.date,
             input.description,
+            status,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         )?;
 
         TransactionRepository::create(self.pool, &transaction).await?;
         Ok(transaction)
+    }
+
+    pub async fn pay_transaction(
+        &self,
+        user_id: UserId,
+        id: TransactionId,
+        payment_date: Option<NaiveDate>,
+    ) -> Result<Transaction, AppError> {
+        let mut tx = TransactionRepository::find_by_id(self.pool, user_id, id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Lançamento com ID '{id}' não encontrado."))
+            })?;
+
+        tx.mark_as_paid(payment_date)?;
+        TransactionRepository::update(self.pool, &tx).await?;
+        Ok(tx)
     }
 
     pub async fn list_transactions(
@@ -164,6 +192,7 @@ impl<'a> TransactionService<'a> {
             account_id,
             category_id,
             kind: input.kind,
+            status: input.status,
             limit: input.limit,
             ..Default::default()
         };
