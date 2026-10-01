@@ -1,5 +1,8 @@
 use crate::format::OutputFormat;
-use app::{CreateRecurringInput, EditRecurringInput, RecurringService};
+use app::{
+    CreateRecurringInput, EditRecurringInput, RecurringService, RunRecurringInput,
+    RunRecurringSummary,
+};
 use chrono::NaiveDate;
 use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
@@ -29,6 +32,9 @@ pub enum RecurringCommands {
 
     /// Remove uma regra de recorrência (não apaga lançamentos já gerados)
     Rm(RecurringRmArgs),
+
+    /// Processa as regras de recorrência e gera os lançamentos pendentes
+    Run(RecurringRunArgs),
 }
 
 #[derive(Args, Debug)]
@@ -121,6 +127,21 @@ pub struct RecurringRmArgs {
     /// Pular confirmação interativa
     #[arg(short = 'y', long = "yes")]
     pub yes: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct RecurringRunArgs {
+    /// Data limite para geração dos lançamentos no formato AAAA-MM-DD (padrão: hoje)
+    #[arg(long)]
+    pub until: Option<String>,
+
+    /// Executa em modo de simulação sem salvar alterações no banco
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Formato de saída (table, json, csv)
+    #[arg(short, long, default_value_t = OutputFormat::Table)]
+    pub format: OutputFormat,
 }
 
 pub async fn handle_recurring_command(
@@ -344,7 +365,134 @@ pub async fn handle_recurring_command(
             println!("Recorrência '{id}' removida com sucesso!");
             Ok(())
         }
+        RecurringCommands::Run(args) => {
+            let until = if let Some(d) = args.until {
+                Some(
+                    NaiveDate::parse_from_str(&d, "%Y-%m-%d")
+                        .map_err(|e| (format!("Data limite inválida '{d}': {e}"), 1))?,
+                )
+            } else {
+                None
+            };
+
+            let summary = service
+                .run_recurring(RunRecurringInput {
+                    user_id,
+                    until_date: until,
+                    dry_run: args.dry_run,
+                })
+                .await
+                .map_err(|e| match e {
+                    app::AppError::NotFound(n) => (n, 1),
+                    app::AppError::Validation(v) => (v, 1),
+                    app::AppError::Domain(d) => (format!("{d}"), 1),
+                    other => (format!("{other}"), 2),
+                })?;
+
+            match args.format {
+                OutputFormat::Table => print_recurring_run_table(&summary),
+                OutputFormat::Json => {
+                    let json = serde_json::to_string_pretty(&summary)
+                        .map_err(|e| (format!("Erro ao gerar JSON: {e}"), 1))?;
+                    println!("{json}");
+                }
+                OutputFormat::Csv => {
+                    let mut wtr = csv::Writer::from_writer(std::io::stdout());
+                    wtr.write_record([
+                        "rule_id",
+                        "description",
+                        "account",
+                        "category",
+                        "kind",
+                        "amount",
+                        "date",
+                        "status",
+                    ])
+                    .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
+
+                    for tx in &summary.transactions_generated {
+                        wtr.write_record([
+                            tx.rule_id.to_string(),
+                            tx.rule_description.clone(),
+                            tx.account_name.clone(),
+                            tx.category_name.clone(),
+                            tx.kind.to_string(),
+                            format!("{:.2}", tx.amount.as_decimal()),
+                            tx.date.to_string(),
+                            tx.status.to_string(),
+                        ])
+                        .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
+                    }
+                    wtr.flush()
+                        .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
+                }
+            }
+
+            Ok(())
+        }
     }
+}
+
+fn print_recurring_run_table(summary: &RunRecurringSummary) {
+    if summary.dry_run {
+        println!("[MODO DE SIMULAÇÃO] Nenhuma alteração foi persistida no banco.\n");
+    }
+
+    if summary.transactions_generated.is_empty() {
+        println!(
+            "Nenhum lançamento recorrente pendente para gerar até {}.",
+            summary.until_date
+        );
+        return;
+    }
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_header(vec![
+            Cell::new("Data").fg(Color::Cyan),
+            Cell::new("Descrição").fg(Color::Cyan),
+            Cell::new("Conta").fg(Color::Cyan),
+            Cell::new("Categoria").fg(Color::Cyan),
+            Cell::new("Tipo").fg(Color::Cyan),
+            Cell::new("Valor")
+                .fg(Color::Cyan)
+                .set_alignment(CellAlignment::Right),
+            Cell::new("Status")
+                .fg(Color::Cyan)
+                .set_alignment(CellAlignment::Center),
+        ]);
+
+    for tx in &summary.transactions_generated {
+        let (kind_cell, amount_cell) = match tx.kind {
+            TransactionKind::Income => (
+                Cell::new(tx.kind.display_pt_br()).fg(Color::Green),
+                Cell::new(format!("+{}", tx.amount.format_pt_br())).fg(Color::Green),
+            ),
+            TransactionKind::Expense => (
+                Cell::new(tx.kind.display_pt_br()).fg(Color::Red),
+                Cell::new(format!("-{}", tx.amount.format_pt_br())).fg(Color::Red),
+            ),
+        };
+
+        table.add_row(vec![
+            Cell::new(tx.date.to_string()),
+            Cell::new(&tx.rule_description),
+            Cell::new(&tx.account_name),
+            Cell::new(&tx.category_name),
+            kind_cell,
+            amount_cell.set_alignment(CellAlignment::Right),
+            Cell::new(tx.status.display_pt_br()).fg(Color::Yellow),
+        ]);
+    }
+
+    println!("{table}");
+    println!(
+        "\nTotal de lançamentos gerados: {} (regras ativas avaliadas: {})",
+        summary.transactions_generated.len(),
+        summary.rules_evaluated
+    );
 }
 
 fn print_recurring_table(rules: &[RecurringRuleDetails]) {
