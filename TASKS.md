@@ -357,16 +357,209 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
 
 ---
 
-## Backlog (fases futuras — detalhar antes de iniciar)
+### Regras transversais (a partir da Fase 5)
 
-### Fase 5 — Robustez e release
-- [ ] Soft delete e auditoria
-- [ ] `finctl backup` / `restore` via `pg_dump`
-- [ ] Binários multiplataforma via GitHub Actions
-- [ ] Autocompletar de shell (`clap_complete`)
+- **Soft delete:** toda consulta de leitura ignora registros com `deleted_at` preenchido. Centralize esse filtro (views ou um módulo único de condições) em vez de repeti-lo em cada query.
+- **Fluxo de caixa × competência:** relatórios (Fase 2) usam competência (D-04). A projeção de fluxo de caixa (F6-07) usa **caixa**: compra no cartão sai na data de vencimento da fatura, não na data da compra.
+- **Sem SQL na TUI:** a crate `tui` só chama a crate `app`, como a `cli`.
+
+### Decisões a confirmar antes de iniciar
+
+| ID | Decisão | Padrão sugerido |
+|---|---|---|
+| D-06 | Auditoria por trigger no banco ou no código da aplicação | Triggers no Postgres (capturam qualquer escrita, inclusive manual), com o ator vindo de `SET LOCAL finctl.actor` |
+| D-07 | Progresso de uma meta | Meta pode ser vinculada a uma conta (progresso = saldo da conta) ou usar aportes manuais registrados na própria meta |
+| D-08 | Projeção de fluxo de caixa para cartão | Saída na data de vencimento da fatura (regime de caixa) |
+| D-09 | Modo de início padrão (`finctl` sem subcomando) | `ask`: pergunta TUI ou linha de comando em terminal interativo; fora dele, age como linha de comando |
+
+---
+
+## Fase 5 — Robustez e release
+
+### [ ] F5-01 — Soft delete
+- **Depende de:** G-01
+- **Escopo:**
+  - Migration adiciona `deleted_at TIMESTAMPTZ` em `transactions`, `accounts` e `categories`
+  - Constraints de unicidade (ex.: nome de conta) viram índices únicos parciais `WHERE deleted_at IS NULL`
+  - `tx rm` passa a ser soft delete; novos comandos `tx restore <id>`, `tx list --deleted` e `finctl purge --older-than <duração> [--yes]` (exclusão definitiva)
+  - Remover conta ou categoria com lançamentos ativos é bloqueado com mensagem clara
+- **Critérios de aceite:**
+  - Saldo, relatórios, orçamentos, recorrências e fatura ignoram registros removidos
+  - Restaurar uma transferência restaura as duas pontas; remover/restaurar um parcelamento por grupo funciona como `tx rm --group`
+  - Há teste de regressão para cada consulta de leitura existente
+  - `purge` exige confirmação e nunca atua em registros com menos tempo que o informado
+- **Notas:**
+
+### [ ] F5-02 — Auditoria
+- **Depende de:** F5-01
+- **Escopo:** tabela `audit_log` (id, tabela, `row_id`, ação `INSERT|UPDATE|DELETE`, `old` e `new` em `JSONB`, `changed_at`, `actor`). Triggers em `transactions`, `accounts`, `categories` e `budgets` (decisão D-06). A aplicação define `SET LOCAL finctl.actor` com o usuário do sistema operacional a cada transação. Comando `finctl audit list [--table X] [--id N] [--since <data>] [--format ...]`.
+- **Critérios de aceite:**
+  - Toda criação, edição e remoção (inclusive soft delete e restore) gera registro
+  - Importação de 1.000 linhas continua com tempo aceitável (medir antes e depois dos triggers e registrar em Notas)
+  - `audit_log` é somente de inserção para o papel usado pela aplicação (sem `UPDATE`/`DELETE` concedidos)
+- **Notas:**
+
+### [ ] F5-03 — Backup e restore
+- **Depende de:** G-01
+- **Escopo:**
+  - `finctl backup --output <dir> [--keep N]` executa `pg_dump` em formato custom (`-Fc`) com nome com data e hora e remove os backups mais antigos além de `N`
+  - `finctl restore <arquivo> [--into <banco>] [--yes]` executa `pg_restore`; por padrão restaura em um banco novo, nunca sobre o atual sem `--yes` e confirmação digitando o nome do banco
+  - Credenciais vêm de `DATABASE_URL`/variáveis de ambiente (`PGPASSWORD`), nunca em argumentos de linha de comando
+- **Critérios de aceite:**
+  - Erro claro quando `pg_dump`/`pg_restore` não estão no `PATH`
+  - Teste de integração: backup → apagar dados → restore → saldos e relatórios idênticos
+  - Backup interrompido não deixa arquivo parcial com nome final (escrever em temporário e renomear)
+- **Notas:**
+
+### [ ] F5-04 — Autocompletar e man page
+- **Depende de:** G-01
+- **Escopo:** `finctl completions <bash|zsh|fish|powershell>` com `clap_complete`; man page gerada com `clap_mangen`; revisão de consistência de todos os `--help` (português, flags com o mesmo nome em todos os comandos).
+- **Critérios de aceite:**
+  - O script gerado carrega sem erro em bash e zsh (teste de fumaça no CI)
+  - Man page é gerada no build de release
+  - Nenhum comando fica sem descrição no `--help`
+- **Notas:**
+
+### [ ] F5-05 — Release multiplataforma
+- **Depende de:** F5-03, F5-04
+- **Escopo:** workflow do GitHub Actions disparado por tag `vX.Y.Z` que compila para Linux (x86_64 e aarch64), macOS (x86_64 e arm64) e Windows (x86_64); `SQLX_OFFLINE=true` com `.sqlx/` versionado; migrations embutidas no binário (`sqlx::migrate!`); artefatos `.tar.gz`/`.zip` com SHA-256; `CHANGELOG.md`; versionamento semântico.
+- **Critérios de aceite:**
+  - Build de release não precisa de banco acessível
+  - Cada artefato inclui binário, completions, man page e README
+  - `finctl --version` mostra versão e commit
+  - Release de teste (tag `v0.0.0-rc`) publica todos os artefatos
+- **Notas:**
+
+### [ ] F5-06 — Hardening de qualidade e desempenho
+- **Depende de:** G-01
+- **Escopo:**
+  - Cobertura com `cargo-llvm-cov` no CI (meta: ≥ 80% em `domain` e `app`)
+  - `cargo audit` e `cargo deny` no CI (vulnerabilidades e licenças)
+  - Teste de carga com 100 mil lançamentos: revisar `EXPLAIN` de saldo, `tx list` e relatórios; criar os índices que faltarem
+  - `finctl db status` mostra versão do schema e migrations pendentes
+- **Critérios de aceite:**
+  - CI falha se a cobertura de `domain`/`app` cair abaixo da meta
+  - Saldo e relatório mensal respondem em tempo aceitável com 100 mil lançamentos (registrar os números em Notas)
+  - Nenhuma consulta pesada faz *sequential scan* em `transactions` sem justificativa
+- **Notas:**
+
+### [ ] G-02 — Gate da Fase 5
+- **Depende de:** F5-01 a F5-06
+- **Escopo:** fluxo completo de instalação a partir do artefato de release (baixar, migrar, usar, backup, restore) em máquina limpa; revisão das regras transversais.
+- **Critérios de aceite:**
+  - Cenário E2E com soft delete, auditoria e restore passa no CI
+  - README documenta instalação, backup/restore e completions
+- **Notas:**
+
+---
+
+## Fase 6 — Evoluções selecionadas
+
+Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas de economia com projeção de fluxo de caixa**. O comando de início (F6-09) permite escolher entre usar a TUI ou apenas a linha de comando.
+
+### Trilha A — TUI com `ratatui`
+
+#### [ ] F6-01 — Crate `tui`: esqueleto e ciclo de eventos
+- **Depende de:** G-02
+- **Escopo:** nova crate `tui` no workspace e comando `finctl tui`. `ratatui` + `crossterm`; arquitetura estilo Elm (`Model`, `Message`, `update`, `view`); consultas ao banco rodam em *tasks* assíncronas e voltam por canal, sem travar o desenho da tela; *panic hook* que restaura o terminal.
+- **Critérios de aceite:**
+  - A TUI abre, redesenha ao redimensionar e fecha com `q` ou `Ctrl+C` sempre restaurando o terminal (inclusive em *panic*)
+  - A crate `tui` depende apenas de `app` e `domain`, sem `sqlx`
+  - Teste com `TestBackend` valida a renderização do estado inicial
+- **Notas:**
+
+#### [ ] F6-02 — Dashboard
+- **Depende de:** F6-01
+- **Escopo:** tela inicial com saldo por conta, resumo do mês (receitas × despesas × saldo), status dos orçamentos (barras com cor por estado) e próximos vencimentos (pendentes e faturas). Navegação por abas (`Tab`/`1–5`).
+- **Critérios de aceite:**
+  - Os números batem com `finctl balance`, `report monthly` e `budget status` para os mesmos dados
+  - Estados de carregamento e erro de banco são exibidos na tela, sem fechar a TUI
+  - Funciona em terminal de 80×24
+- **Notas:**
+
+#### [ ] F6-03 — Tela de lançamentos
+- **Depende de:** F6-02
+- **Escopo:** tabela paginada com filtros (período, conta, categoria, tipo, status, tag), busca por descrição, e formulário para adicionar, editar, remover (com confirmação) e marcar como pago, reutilizando os casos de uso de `app`.
+- **Critérios de aceite:**
+  - Mesmas validações da CLI (valor, categoria compatível, datas)
+  - Seleção múltipla para marcar vários como pagos
+  - Lista de 100 mil lançamentos navega sem travar (paginação no banco)
+- **Notas:**
+
+#### [ ] F6-04 — Tela de relatórios
+- **Depende de:** F6-02
+- **Escopo:** gráfico de barras de gastos por categoria, `Sparkline`/linha de evolução mensal de receitas e despesas e comparativo entre meses, com seletor de período e alternância entre competência e incluir previstos.
+- **Critérios de aceite:**
+  - Dados idênticos aos comandos `report` equivalentes
+  - Legendas legíveis em 80 colunas; categorias longas são truncadas com `…`
+- **Notas:**
+
+#### [ ] F6-05 — Ajuda, atalhos e testes de interface
+- **Depende de:** F6-03, F6-04
+- **Escopo:** painel de ajuda (`?`) com todos os atalhos, barra de status com dicas contextuais, tema claro/escuro configurável, snapshots de tela com `insta` usando `TestBackend`.
+- **Critérios de aceite:**
+  - Cada tela tem ao menos um teste de snapshot
+  - Todos os atalhos aparecem no painel de ajuda (teste que compara a lista de atalhos registrados com a exibida)
+  - A seção de README sobre a TUI inclui o mapa de teclas
+- **Notas:**
+
+#### [ ] F6-09 — Comando de início: escolher TUI ou linha de comando
+- **Depende de:** F6-01
+- **Escopo:**
+  - `finctl start [--mode tui|cli|ask]`; rodar `finctl` sem subcomando equivale a `finctl start`
+  - **Modo `ask`** (padrão, D-09): em terminal interativo, mostra um menu com duas opções — `1) Interface interativa (TUI)` e `2) Linha de comando` — e a opção "lembrar minha escolha", que grava a preferência na configuração
+  - **Modo `tui`:** abre a TUI direto. **Modo `cli`:** mostra o `--help` resumido com os comandos mais usados e encerra
+  - Configuração em `~/.config/finctl/config.toml`, chave `ui.mode`, com os comandos `finctl config get|set|list` (ex.: `finctl config set ui.mode tui`)
+  - **Precedência:** `--mode` > variável `FINCTL_MODE` > `config.toml` > padrão `ask`
+  - Subcomandos explícitos (`finctl balance`, `finctl tx list`...) **nunca** passam pelo menu; `finctl tui` sempre abre a TUI, mesmo com `ui.mode = cli`
+- **Critérios de aceite:**
+  - Fora de um terminal interativo (pipe, cron, CI), `finctl` sem subcomando nunca pede entrada: age como modo `cli` e retorna código `0` (invocação sem comando não é erro de uso)
+  - Terminal menor que 80×24 ou sem suporte à TUI: a opção da TUI é recusada com mensagem clara e o fluxo cai no modo `cli`, sem abrir uma tela quebrada
+  - "Lembrar minha escolha" grava `ui.mode` e a próxima execução pula o menu; `finctl config set ui.mode ask` restaura o menu
+  - Valor inválido em `--mode`, `FINCTL_MODE` ou `config.toml` retorna erro de validação (código `1`) indicando os valores aceitos
+  - Testes cobrem a precedência, o menu (entrada simulada) e o comportamento sem TTY
+- **Notas:**
+
+### Trilha B — Metas de economia e projeção de fluxo de caixa
+
+#### [ ] F6-06 — Metas de economia
+- **Depende de:** G-02
+- **Escopo:** migrations `goals` (nome, valor alvo, data alvo opcional, conta vinculada opcional) e `goal_contributions` (meta, valor, data, nota). Comandos `goal add|list|show|contribute|edit|rm`. Progresso conforme D-07: saldo da conta vinculada ou soma dos aportes. `goal show` exibe percentual, valor que falta, aporte mensal necessário até a data alvo e data estimada de conclusão com base na média de aportes dos últimos 3 meses.
+- **Critérios de aceite:**
+  - Meta sem data alvo não exibe aporte necessário (só a estimativa)
+  - Meta atingida é marcada como concluída e some do `goal list` padrão (visível com `--all`)
+  - Média de aportes sem histórico suficiente mostra `n/d`, sem erro
+  - Testes cobrem meta vinculada a conta e meta com aportes manuais
+- **Notas:**
+
+#### [ ] F6-07 — Projeção de fluxo de caixa
+- **Depende de:** G-02
+- **Escopo:** `finctl forecast [--months N] [--account X] [--granularity week|month]` projeta o saldo futuro a partir do saldo atual somando: lançamentos `pending`, ocorrências futuras das regras recorrentes ainda não geradas (apenas após `last_generated_date`, sem duplicar as já materializadas), parcelas futuras e faturas de cartão no vencimento (D-08). Destaca o primeiro período em que o saldo projetado fica negativo.
+- **Critérios de aceite:**
+  - Nenhum valor é contado duas vezes (recorrência já gerada, parcela e compra de cartão com fatura em aberto), com teste para cada caso
+  - Compra no cartão sai na data de vencimento da fatura, e não na data da compra
+  - Transferências entre contas próprias não alteram o saldo total projetado
+  - Suporta `--format table|json|csv`
+- **Notas:**
+
+#### [ ] F6-08 — Metas e projeção na TUI
+- **Depende de:** F6-02, F6-06, F6-07
+- **Escopo:** tela de metas (barra de progresso, aporte necessário, registrar aporte) e tela de projeção (linha do saldo futuro com marcação do período negativo); aportes planejados de metas entram na projeção como saída opcional (`--include-goals`).
+- **Critérios de aceite:**
+  - Valores iguais aos de `goal show` e `forecast`
+  - Com `--include-goals`, o aporte mensal necessário reduz o saldo projetado, sem contagem dupla com aportes já registrados
+- **Notas:**
+
+### [ ] G-03 — Gate da Fase 6
+- **Depende de:** F6-01 a F6-09
+- **Escopo:** E2E cobrindo meta, projeção, as telas da TUI e o comando de início nos três modos; revisão de README e `CHANGELOG.md`; release minor.
+- **Critérios de aceite:**
+  - Cenário E2E passa no CI
+  - Release publicada com o fluxo de F5-05
+- **Notas:**
+
+---
 
 ### Ideias (sem prioridade)
-- [ ] TUI com `ratatui`
 - [ ] API HTTP com `axum` reaproveitando `app` e `storage`
-- [ ] Multi-moeda
-- [ ] Metas de economia e projeção de fluxo de caixa
+- [ ] Multi-moeda com tabela de câmbio
