@@ -238,14 +238,14 @@ As três fases têm dependências cruzadas (relatórios precisam saber de status
   - Testes cobrem saldo realizado × projetado
 - **Notas:** Implementado suporte a lançamentos previstos (`TransactionStatus::Pending`) e realizados (`TransactionStatus::Paid`). Flags `--pending` adicionadas a `income add` e `expense add`, comando `finctl tx pay <id> [--date]` para realização de transações, filtro `--status paid|pending` em `finctl tx list`, e cálculo de saldo projetado com `finctl balance --projected [--at <data>]`. Testes de integração validam fluxo completo de saldos e proteção contra pagamento duplicado.
 
-### [ ] F3-02 — Orçamentos por categoria
+### [x] F3-02 — Orçamentos por categoria
 - **Depende de:** F2-01, F3-01
 - **Escopo:** migration `budgets` (categoria, limite mensal, `month` opcional para exceção pontual). Comandos `budget set <categoria> <valor> [--month]`, `budget list`, `budget status [--month]` (consumido, restante, %, indicador `OK` / `ALERTA ≥ 80%` / `ESTOURADO`). Após `expense add`, exibir aviso se o orçamento da categoria foi ultrapassado.
 - **Critérios de aceite:**
   - O aviso nunca altera o código de saída (continua `0`)
   - Orçamento da categoria pai considera as subcategorias
   - Testes cobrem os três estados do indicador
-- **Notas:**
+- **Notas:** Comandos `finctl budget set`, `list` e `status` implementados com suporte a orçamentos recorrentes e exceções mensais específicas. O status agrega despesas de categorias filhas na categoria pai e classifica os indicadores em OK, ALERTA (≥ 80%) e ESTOURADO (> 100%). Após `expense add`, alertas de orçamento são exibidos no stderr sem alterar o exit code 0. Testes de integração validam hierarquia, cálculo de status e alertas.
 
 ### [ ] F3-03 — Regras de recorrência (CRUD)
 - **Depende de:** F2-00

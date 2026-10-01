@@ -99,6 +99,36 @@ pub async fn handle_expense_command(
                 status_msg,
                 tx.id
             );
+
+            // Check budget alert (never affects exit code)
+            let budget_service = app::BudgetService::new(pool);
+            if let Ok(Some(alert)) = budget_service
+                .check_budget_after_expense(user_id, tx.category_id, tx.date)
+                .await
+            {
+                match alert.indicator {
+                    domain::BudgetIndicator::Exceeded => {
+                        eprintln!(
+                            "\n⚠️  ATENÇÃO: Orçamento da categoria '{}' foi ESTOURADO! (Consumido: {} de {} - {:.1}%)",
+                            alert.category_name,
+                            alert.consumed_amount.format_pt_br(),
+                            alert.budget_amount.format_pt_br(),
+                            alert.percentage
+                        );
+                    }
+                    domain::BudgetIndicator::Warning => {
+                        eprintln!(
+                            "\n⚠️  AVISO: Orçamento da categoria '{}' atingiu {:.1}% do limite (Consumido: {} de {}).",
+                            alert.category_name,
+                            alert.percentage,
+                            alert.consumed_amount.format_pt_br(),
+                            alert.budget_amount.format_pt_br()
+                        );
+                    }
+                    domain::BudgetIndicator::Ok => {}
+                }
+            }
+
             Ok(())
         }
     }

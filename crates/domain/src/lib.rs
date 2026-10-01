@@ -1,4 +1,5 @@
 pub mod account;
+pub mod budget;
 pub mod category;
 pub mod errors;
 pub mod money;
@@ -7,6 +8,7 @@ pub mod transaction;
 pub mod types;
 
 pub use account::Account;
+pub use budget::{Budget, BudgetIndicator};
 pub use category::Category;
 pub use errors::DomainError;
 pub use money::{format_decimal_pt_br, Money};
