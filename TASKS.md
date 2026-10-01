@@ -142,26 +142,211 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
 
 ---
 
+## Orquestração das Fases 2, 3 e 4
+
+As três fases têm dependências cruzadas (relatórios precisam saber de status e transferências; cartão precisa de transferências e parcelas). Por isso o plano é **schema primeiro, depois trilhas paralelas por ondas**.
+
+### Regras transversais (valem para todas as tasks das Fases 2–4)
+
+- **Realizado × previsto:** saldo e relatórios consideram apenas `status = 'paid'` por padrão. Use `--include-pending` (relatórios) ou `--projected` (saldo) para incluir previstos.
+- **Transferências:** saldo das contas inclui transferências; relatórios de receita/despesa **excluem** lançamentos com `transfer_id IS NOT NULL`.
+- **Cartão de crédito:** a compra é despesa na **data da compra** (competência); o pagamento da fatura é uma **transferência** da conta pagadora para o cartão (decisão D-04).
+- **Idempotência:** comandos que geram dados (`recurring run`, `import csv`) podem rodar duas vezes sem duplicar.
+- **Operações compostas** (transferência, parcelamento, pagamento de fatura) rodam em uma única transação SQL.
+
+## Fase 2 — Relatórios e consultas
+
+### [ ] F2-00 — Preparação de schema para as Fases 2–4
+- **Depende de:** F1-08
+- **Escopo:** migration única, **aditiva** (colunas nullable ou com default), para evitar migrations conflitantes entre trilhas:
+  - `transactions.status` (`paid` | `pending`, default `paid`)
+  - `transactions.transfer_id` (UUID, nullable)
+  - `transactions.installment_group_id`, `installment_number`, `installment_total` (nullable)
+  - `transactions.recurring_rule_id` (nullable)
+  - `transactions.import_hash` (TEXT, nullable) com índice único parcial `(account_id, import_hash) WHERE import_hash IS NOT NULL`
+  - `transactions.reconciled_at` (TIMESTAMPTZ, nullable)
+  - `categories.is_system` (BOOLEAN, default `false`)
+  - Domínio: enum `TransactionStatus`; repositórios atualizados para os novos campos
+- **Critérios de aceite:**
+  - A migration aplica sobre um banco com dados do MVP sem alterar nenhum comportamento existente
+  - Todos os testes da Fase 1 continuam passando
+  - `CHECK` garante coerência (`installment_number <= installment_total`, status válido)
+- **Notas:**
+
+### [ ] F2-01 — Camada de agregação (storage/app)
+- **Depende de:** F2-00
+- **Escopo:** consultas e casos de uso reutilizáveis: totais por mês (receitas, despesas, saldo), totais por categoria (com opção de agregar subcategorias na categoria pai) e por período. Aplicam as regras transversais.
+- **Critérios de aceite:**
+  - Testes de integração com dataset fixo cobrem: lançamentos `pending` ignorados, transferências excluídas, subcategorias agregadas
+  - Consultas usam os índices existentes (verificar com `EXPLAIN` em ao menos um teste ou na descrição do PR)
+- **Notas:**
+
+### [ ] F2-02 — `finctl report monthly`
+- **Depende de:** F2-01
+- **Escopo:** `finctl report monthly [--month YYYY-MM | --year YYYY] [--account X] [--include-pending]` mostra receitas, despesas e saldo do período (por mês, quando for ano).
+- **Critérios de aceite:**
+  - Padrão: mês corrente
+  - Suporta `--format table|json|csv`
+  - Valores conferem com cálculo manual em teste
+- **Notas:**
+
+### [ ] F2-03 — `finctl report categories`
+- **Depende de:** F2-01
+- **Escopo:** `finctl report categories [--month YYYY-MM] [--kind expense|income] [--depth 1|2]` lista total e percentual por categoria, ordenado do maior para o menor.
+- **Critérios de aceite:**
+  - Percentuais somam 100% (tratar arredondamento)
+  - `--depth 1` agrupa subcategorias na categoria pai
+  - Período sem lançamentos mostra mensagem amigável, não erro
+- **Notas:**
+
+### [ ] F2-04 — `finctl report compare`
+- **Depende de:** F2-01
+- **Escopo:** `finctl report compare --months 2026-08,2026-09` ou `--last N`; mostra por categoria o valor de cada mês e a variação absoluta e percentual.
+- **Critérios de aceite:**
+  - Variação com base zero não gera divisão por zero (exibe `n/d`)
+  - Suporta `--format json`
+- **Notas:**
+
+### [ ] F2-05 — Exportação para arquivo
+- **Depende de:** F1-04
+- **Escopo:** `finctl export tx --output <arquivo> [filtros de tx list] [--format csv|json] [--locale pt-BR]`. No CSV pt-BR: separador `;`, vírgula decimal e BOM UTF-8 (abre direto no Excel).
+- **Critérios de aceite:**
+  - Reimportar o CSV exportado (F2-06, perfil `generic`) reproduz os mesmos lançamentos
+  - Não sobrescreve arquivo existente sem `--force`
+- **Notas:**
+
+### [ ] F2-06 — Importação de CSV
+- **Depende de:** F2-00
+- **Escopo:** `finctl import csv <arquivo> --account X [--profile nome] [--dry-run]`. Perfis de mapeamento de colunas em TOML (`~/.config/finctl/profiles/`), com perfil `generic` embutido. `import_hash` calculado por data + valor + descrição + ocorrência. Lançamentos sem categoria vão para "A classificar".
+- **Critérios de aceite:**
+  - Rodar o mesmo arquivo duas vezes não duplica lançamentos
+  - `--dry-run` mostra o que seria importado sem gravar
+  - Resumo final: importados, duplicados ignorados e erros por linha (com número da linha)
+  - Aceita vírgula ou ponto decimal e datas `DD/MM/YYYY` ou `YYYY-MM-DD`
+- **Notas:**
+
+---
+
+## Fase 3 — Planejamento
+
+### [ ] F3-01 — Status previsto × realizado
+- **Depende de:** F2-00, F1-06
+- **Escopo:** flag `--pending` em `income add`/`expense add`; `finctl tx pay <id> [--date]` marca como realizado; `tx list --status paid|pending`; `balance --projected [--at <data>]` inclui previstos até a data.
+- **Critérios de aceite:**
+  - `balance` e relatórios sem flags ignoram `pending`
+  - `tx pay` em lançamento já pago retorna erro claro
+  - Testes cobrem saldo realizado × projetado
+- **Notas:**
+
+### [ ] F3-02 — Orçamentos por categoria
+- **Depende de:** F2-01, F3-01
+- **Escopo:** migration `budgets` (categoria, limite mensal, `month` opcional para exceção pontual). Comandos `budget set <categoria> <valor> [--month]`, `budget list`, `budget status [--month]` (consumido, restante, %, indicador `OK` / `ALERTA ≥ 80%` / `ESTOURADO`). Após `expense add`, exibir aviso se o orçamento da categoria foi ultrapassado.
+- **Critérios de aceite:**
+  - O aviso nunca altera o código de saída (continua `0`)
+  - Orçamento da categoria pai considera as subcategorias
+  - Testes cobrem os três estados do indicador
+- **Notas:**
+
+### [ ] F3-03 — Regras de recorrência (CRUD)
+- **Depende de:** F2-00
+- **Escopo:** migration `recurring_rules` (tipo, conta, categoria, valor, descrição, frequência `weekly|monthly|yearly`, dia, `start_date`, `end_date`, `active`, `last_generated_date`). Comandos `recurring add|list|edit|pause|rm`.
+- **Critérios de aceite:**
+  - Dia 29–31 em mês mais curto usa o último dia do mês (decisão D-05)
+  - Validações iguais às de lançamentos avulsos
+  - `rm` não apaga lançamentos já gerados
+- **Notas:**
+
+### [ ] F3-04 — `finctl recurring run`
+- **Depende de:** F3-03, F3-01
+- **Escopo:** `finctl recurring run [--until <data>] [--dry-run]` gera lançamentos `pending` com `recurring_rule_id`. Índice único `(recurring_rule_id, date)` garante idempotência. Documentar exemplo de agendamento via cron ou systemd timer.
+- **Critérios de aceite:**
+  - Rodar duas vezes seguidas não duplica lançamentos
+  - Recupera ocorrências atrasadas (ex.: não rodou por 2 meses)
+  - Falha parcial reverte tudo (transação única)
+- **Notas:**
+
+### [ ] F3-05 — Parcelamentos
+- **Depende de:** F3-01
+- **Escopo:** `expense add --installments N` (com valor total ou `--installment-amount`) gera N lançamentos `pending`, com datas mensais e mesmo `installment_group_id`. Centavos de arredondamento vão para a primeira parcela. `tx list --group <id>`, `tx edit --group` e `tx rm --group` atuam só nas parcelas ainda `pending`.
+- **Critérios de aceite:**
+  - A soma das parcelas é exatamente o valor total
+  - Dia 29–31 segue a regra D-05
+  - Parcelas já pagas nunca são alteradas ou removidas pelos comandos de grupo
+- **Notas:**
+
+---
+
+## Fase 4 — Contas avançadas
+
+### [ ] F4-01 — Transferências entre contas
+- **Depende de:** F2-00, F1-06
+- **Escopo:** `finctl transfer add --from A --to B --amount V [--date]` cria duas linhas em uma transação SQL (despesa na origem, receita no destino) com o mesmo `transfer_id`, usando a categoria de sistema "Transferência" (`is_system = true`, uma por tipo). `tx rm` de uma perna remove a outra.
+- **Critérios de aceite:**
+  - Origem e destino devem ser contas diferentes
+  - Saldos das contas refletem a transferência; relatórios de receita/despesa não
+  - `tx edit` em lançamento de transferência é bloqueado com mensagem orientando a refazer a transferência
+- **Notas:**
+
+### [ ] F4-02 — Cartão de crédito: modelo e faturas
+- **Depende de:** F4-01, F3-01
+- **Escopo:** `accounts.kind = credit_card` com `closing_day`, `due_day` e `credit_limit` opcional; migration `card_invoices` (conta, mês de referência, datas de fechamento e vencimento, status `open|closed|paid`); atribuição automática da compra à fatura (compra após o fechamento vai para a fatura seguinte); parcelas (F3-05) distribuídas nas faturas seguintes.
+- **Critérios de aceite:**
+  - Compra no dia do fechamento e no dia seguinte caem em faturas diferentes (teste explícito)
+  - Faturas são criadas sob demanda, sem duplicar
+  - Parcelamento de N parcelas gera lançamentos em N faturas consecutivas
+- **Notas:**
+
+### [ ] F4-03 — `finctl card invoice`
+- **Depende de:** F4-02
+- **Escopo:** `card invoice list|show <cartão> [--month]` exibe lançamentos, total, vencimento e limite disponível; `card invoice close <cartão> [--month]` fecha a fatura.
+- **Critérios de aceite:**
+  - Fatura fechada não aceita novos lançamentos (eles vão para a próxima)
+  - Total da fatura confere com a soma dos lançamentos
+- **Notas:**
+
+### [ ] F4-04 — Pagamento de fatura
+- **Depende de:** F4-03, F4-01
+- **Escopo:** `card pay <cartão> --from <conta> [--month] [--amount]` gera uma transferência (F4-01) da conta pagadora para o cartão e atualiza o status da fatura. Valor padrão: total da fatura.
+- **Critérios de aceite:**
+  - Pagamento total marca a fatura como `paid`
+  - Pagamento parcial mantém `closed`, com saldo restante visível em `card invoice show`
+  - Pagamento não aparece como despesa nos relatórios (é transferência)
+- **Notas:**
+
+### [ ] F4-05 — Conciliação com extrato
+- **Depende de:** F2-06
+- **Escopo:** `finctl reconcile --account X --file extrato.csv [--profile nome]` casa lançamentos por valor, data (± N dias, padrão 3) e similaridade de descrição; apresenta os pares sugeridos para confirmação e grava `reconciled_at`. `finctl reconcile status [--account X]` lista os não conciliados.
+- **Critérios de aceite:**
+  - Reutiliza o parser e os perfis da F2-06
+  - Nada é gravado sem confirmação (ou `--yes`)
+  - Itens do extrato sem correspondência são listados, sem criar lançamentos automaticamente
+- **Notas:**
+
+### [ ] F4-06 — Tags e referência de anexos
+- **Depende de:** F2-00
+- **Escopo:** tabelas `tags`, `transaction_tags` e `attachments` (transação, URI, SHA-256 opcional, nota). Comandos `tag add|list|rm`, `tx tag <id> <tags...>`, `tx list --tag`, `tx attach <id> <caminho|url>` (só guarda a referência; não armazena o arquivo).
+- **Critérios de aceite:**
+  - Anexo local tem a existência verificada e o hash calculado
+  - `tag rm` pede confirmação quando a tag está em uso
+  - `report categories --tag` filtra por tag, se F2-03 estiver concluída
+- **Notas:**
+
+---
+
+## Gate — Revisão das Fases 2–4
+
+### [ ] G-01 — Revisão e documentação
+- **Depende de:** todas as tasks das Fases 2–4
+- **Escopo:** teste de ponta a ponta (conta → lançamentos → recorrência → parcelas → cartão → pagamento de fatura → relatórios), README atualizado com os novos comandos e revisão das regras transversais.
+- **Critérios de aceite:**
+  - Cenário E2E automatizado passa no CI
+  - Relatórios nunca contam transferências nem lançamentos `pending` por padrão
+  - README cobre todos os comandos novos
+- **Notas:**
+
+---
+
 ## Backlog (fases futuras — detalhar antes de iniciar)
-
-### Fase 2 — Relatórios e consultas
-- [ ] Resumo mensal: receitas × despesas × saldo
-- [ ] Gastos por categoria (com percentual)
-- [ ] Comparativo entre meses
-- [ ] Exportação CSV/JSON
-- [ ] Importação de CSV (extratos bancários)
-
-### Fase 3 — Planejamento
-- [ ] Orçamentos por categoria com alerta de limite (`finctl budget set|status`)
-- [ ] Transações recorrentes (`finctl recurring add|run`)
-- [ ] Parcelamentos
-- [ ] Status previsto × realizado (`pending`/`paid`)
-
-### Fase 4 — Contas avançadas
-- [ ] Transferências entre contas (`transfer_id`)
-- [ ] Cartão de crédito: fatura, fechamento e vencimento
-- [ ] Conciliação com extrato
-- [ ] Tags e referência de anexos
 
 ### Fase 5 — Robustez e release
 - [ ] Soft delete e auditoria
