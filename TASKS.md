@@ -117,13 +117,13 @@ Backlog de tasks do projeto. Regras de uso estão em `AGENTS.md`.
   - ID inexistente retorna erro claro (código `1`)
 - **Notas:** `finctl tx edit` e `finctl tx rm` implementados com suporte a `--yes`, prompt interativo do `dialoguer` e validações completas de negócio.
 
-### [ ] F1-06 — `finctl balance`
+### [x] F1-06 — `finctl balance`
 - **Depende de:** F1-03
 - **Escopo:** saldo por conta (saldo inicial + receitas − despesas) e total geral; opção `--at <data>` para saldo em uma data.
 - **Critérios de aceite:**
   - Resultado confere com cálculo manual em teste de integração
   - Saída em tabela com total ao final; suporta `--format json`
-- **Notas:**
+- **Notas:** `finctl balance` implementado com agregação SQL (saldo inicial + receitas - despesas), suporte ao filtro `--at <data>`, exibição em tabela formatada com linha de TOTAL GERAL e exportação em json/csv.
 
 ### [ ] F1-07 — Seed de categorias padrão
 - **Depende de:** F1-02
