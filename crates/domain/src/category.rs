@@ -12,6 +12,7 @@ pub struct Category {
     pub parent_id: Option<CategoryId>,
     pub is_system: bool,
     pub created_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl Category {
@@ -59,7 +60,12 @@ impl Category {
             parent_id,
             is_system,
             created_at: Utc::now(),
+            deleted_at: None,
         })
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.deleted_at.is_some()
     }
 }
 

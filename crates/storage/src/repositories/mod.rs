@@ -18,4 +18,6 @@ pub use report_repository::{
     CategoryCompareFilter, CategoryReportFilter, MonthlyReportFilter, ReportRepository,
 };
 pub use tag_repository::TagRepository;
-pub use transaction_repository::{TransactionDetails, TransactionFilter, TransactionRepository};
+pub use transaction_repository::{
+    PurgeSummary, TransactionDetails, TransactionFilter, TransactionRepository,
+};

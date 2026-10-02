@@ -27,6 +27,7 @@ pub struct Transaction {
     pub reconciled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl Transaction {
@@ -116,8 +117,10 @@ impl Transaction {
             reconciled_at,
             created_at: now,
             updated_at: now,
+            deleted_at: None,
         })
     }
+
     pub fn mark_as_paid(&mut self, payment_date: Option<NaiveDate>) -> Result<(), DomainError> {
         if self.status == TransactionStatus::Paid {
             return Err(DomainError::Validation(
@@ -130,6 +133,20 @@ impl Transaction {
         }
         self.updated_at = Utc::now();
         Ok(())
+    }
+
+    pub fn soft_delete(&mut self) {
+        self.deleted_at = Some(Utc::now());
+        self.updated_at = Utc::now();
+    }
+
+    pub fn restore(&mut self) {
+        self.deleted_at = None;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.deleted_at.is_some()
     }
 }
 

@@ -73,7 +73,7 @@ impl BudgetRepository {
                 r#"
                 SELECT b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
                 FROM budgets b
-                JOIN categories c ON b.category_id = c.id
+                JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
                 WHERE b.user_id = $1 AND (b.month = $2 OR b.month IS NULL)
                 ORDER BY c.name ASC, b.month DESC NULLS LAST
                 "#,
@@ -88,7 +88,7 @@ impl BudgetRepository {
                 r#"
                 SELECT b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
                 FROM budgets b
-                JOIN categories c ON b.category_id = c.id
+                JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
                 WHERE b.user_id = $1
                 ORDER BY c.name ASC, b.month DESC NULLS LAST
                 "#,
@@ -117,7 +117,7 @@ impl BudgetRepository {
             SELECT DISTINCT ON (b.category_id)
                 b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
             FROM budgets b
-            JOIN categories c ON b.category_id = c.id
+            JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
             WHERE b.user_id = $1 AND (b.month = $2 OR b.month IS NULL)
             ORDER BY b.category_id, (CASE WHEN b.month = $2 THEN 0 ELSE 1 END) ASC, b.updated_at DESC
             "#,
@@ -145,7 +145,7 @@ impl BudgetRepository {
             r#"
             SELECT b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
             FROM budgets b
-            JOIN categories c ON b.category_id = c.id
+            JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
             WHERE b.user_id = $1 AND b.category_id = $2 AND (b.month = $3 OR b.month IS NULL)
             ORDER BY (CASE WHEN b.month = $3 THEN 0 ELSE 1 END) ASC
             LIMIT 1

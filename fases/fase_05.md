@@ -25,7 +25,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
 
 ## Tasks
 
-### [ ] F5-01 — Soft delete
+### [x] F5-01 — Soft delete
 - **Depende de:** G-01
 - **Escopo:**
   - Migration adiciona `deleted_at TIMESTAMPTZ` em `transactions`, `accounts` e `categories`
@@ -37,7 +37,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - Restaurar uma transferência restaura as duas pontas; remover/restaurar um parcelamento por grupo funciona como `tx rm --group`
   - Há teste de regressão para cada consulta de leitura existente
   - `purge` exige confirmação e nunca atua em registros com menos tempo que o informado
-- **Notas:**
+- **Notas:** Implementada migration `20261001020000_soft_delete.sql` com conversão para índices parciais únicos (`WHERE deleted_at IS NULL`). Suporte a `deleted_at` em todas as consultas de leitura (saldos, relatórios mensais e de categoria, orçamentos e recorrências). Adicionados subcomandos `finctl tx restore <id> [--group]`, `finctl tx list --deleted`, `finctl account rm <account> [--yes]`, `finctl category rm <category> [--yes]` e `finctl purge --older-than <duração> [--yes]`. Criados testes completos de integração em `crates/storage/tests/soft_delete_test.rs`.
 
 ### [ ] F5-02 — Auditoria
 - **Depende de:** F5-01

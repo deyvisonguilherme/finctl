@@ -16,6 +16,7 @@ pub struct Account {
     pub credit_limit: Option<Money>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl Account {
@@ -105,7 +106,12 @@ impl Account {
             credit_limit,
             created_at: now,
             updated_at: now,
+            deleted_at: None,
         })
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.deleted_at.is_some()
     }
 }
 

@@ -33,6 +33,7 @@ pub struct TransactionDetails {
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -51,6 +52,14 @@ pub struct TransactionFilter {
     pub reconciled: Option<bool>,
     pub tag: Option<String>,
     pub limit: Option<i64>,
+    pub deleted: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PurgeSummary {
+    pub purged_transactions: u64,
+    pub purged_accounts: u64,
+    pub purged_categories: u64,
 }
 
 pub struct TransactionRepository;
@@ -163,7 +172,36 @@ impl TransactionRepository {
             SELECT 
                 id, user_id, account_id, category_id, kind, amount, date, description,
                 status, transfer_id, installment_group_id, installment_number, installment_total,
-                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at
+                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at, deleted_at
+            FROM transactions
+            WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        if let Some(row) = row {
+            Ok(Some(map_transaction_row(row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn find_by_id_including_deleted(
+        pool: &PgPool,
+        user_id: UserId,
+        id: TransactionId,
+    ) -> Result<Option<Transaction>, StorageError> {
+        let row = sqlx::query(
+            r#"
+            SELECT 
+                id, user_id, account_id, category_id, kind, amount, date, description,
+                status, transfer_id, installment_group_id, installment_number, installment_total,
+                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at, deleted_at
             FROM transactions
             WHERE user_id = $1 AND id = $2
             LIMIT 1
@@ -195,7 +233,7 @@ impl TransactionRepository {
                 t.status, t.transfer_id, t.installment_group_id,
                 t.installment_number, t.installment_total, t.recurring_rule_id,
                 t.import_hash, t.reconciled_at,
-                t.created_at, t.updated_at
+                t.created_at, t.updated_at, t.deleted_at
             FROM transactions t
             JOIN accounts a ON t.account_id = a.id
             JOIN categories c ON t.category_id = c.id
@@ -203,6 +241,12 @@ impl TransactionRepository {
             "#,
         );
         builder.push_bind(filter.user_id.as_uuid());
+
+        if filter.deleted == Some(true) {
+            builder.push(" AND t.deleted_at IS NOT NULL");
+        } else {
+            builder.push(" AND t.deleted_at IS NULL");
+        }
 
         if let Some(from) = filter.from_date {
             builder.push(" AND t.date >= ");
@@ -303,8 +347,8 @@ impl TransactionRepository {
             SET account_id = $1, category_id = $2, kind = $3, amount = $4, date = $5, description = $6,
                 status = $7, transfer_id = $8, installment_group_id = $9, installment_number = $10,
                 installment_total = $11, recurring_rule_id = $12, import_hash = $13, reconciled_at = $14,
-                updated_at = $15
-            WHERE id = $16 AND user_id = $17
+                updated_at = $15, deleted_at = $16
+            WHERE id = $17 AND user_id = $18
             "#,
         )
         .bind(tx.account_id.as_uuid())
@@ -322,6 +366,7 @@ impl TransactionRepository {
         .bind(&tx.import_hash)
         .bind(tx.reconciled_at)
         .bind(tx.updated_at)
+        .bind(tx.deleted_at)
         .bind(tx.id.as_uuid())
         .bind(tx.user_id.as_uuid())
         .execute(pool)
@@ -352,7 +397,7 @@ impl TransactionRepository {
             r#"
             UPDATE transactions
             SET reconciled_at = NOW(), updated_at = NOW()
-            WHERE user_id = $1 AND id = ANY($2)
+            WHERE user_id = $1 AND id = ANY($2) AND deleted_at IS NULL
             "#,
         )
         .bind(user_id.as_uuid())
@@ -363,6 +408,116 @@ impl TransactionRepository {
         .rows_affected();
 
         Ok(rows_affected)
+    }
+
+    pub async fn soft_delete(
+        pool: &PgPool,
+        user_id: UserId,
+        id: TransactionId,
+    ) -> Result<bool, StorageError> {
+        let res = sqlx::query(
+            "UPDATE transactions SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(id.as_uuid())
+        .bind(user_id.as_uuid())
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn soft_delete_by_transfer_id(
+        pool: &PgPool,
+        user_id: UserId,
+        transfer_id: Uuid,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            "UPDATE transactions SET deleted_at = NOW(), updated_at = NOW() WHERE user_id = $1 AND transfer_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(user_id.as_uuid())
+        .bind(transfer_id)
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn soft_delete_pending_by_installment_group(
+        pool: &PgPool,
+        user_id: UserId,
+        group_id: Uuid,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            r#"
+            UPDATE transactions
+            SET deleted_at = NOW(), updated_at = NOW()
+            WHERE user_id = $1 AND installment_group_id = $2 AND status = 'pending' AND deleted_at IS NULL
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn restore(
+        pool: &PgPool,
+        user_id: UserId,
+        id: TransactionId,
+    ) -> Result<bool, StorageError> {
+        let res = sqlx::query(
+            "UPDATE transactions SET deleted_at = NULL, updated_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL",
+        )
+        .bind(id.as_uuid())
+        .bind(user_id.as_uuid())
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn restore_by_transfer_id(
+        pool: &PgPool,
+        user_id: UserId,
+        transfer_id: Uuid,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            "UPDATE transactions SET deleted_at = NULL, updated_at = NOW() WHERE user_id = $1 AND transfer_id = $2 AND deleted_at IS NOT NULL",
+        )
+        .bind(user_id.as_uuid())
+        .bind(transfer_id)
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn restore_by_installment_group(
+        pool: &PgPool,
+        user_id: UserId,
+        group_id: Uuid,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            r#"
+            UPDATE transactions
+            SET deleted_at = NULL, updated_at = NOW()
+            WHERE user_id = $1 AND installment_group_id = $2 AND deleted_at IS NOT NULL
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(res.rows_affected())
     }
 
     pub async fn delete(
@@ -388,9 +543,9 @@ impl TransactionRepository {
                 INSERT INTO transactions (
                     id, user_id, account_id, category_id, kind, amount, date, description,
                     status, transfer_id, installment_group_id, installment_number, installment_total,
-                    recurring_rule_id, import_hash, reconciled_at, created_at, updated_at
+                    recurring_rule_id, import_hash, reconciled_at, created_at, updated_at, deleted_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 "#,
             )
             .bind(tx.id.as_uuid())
@@ -411,6 +566,7 @@ impl TransactionRepository {
             .bind(tx.reconciled_at)
             .bind(tx.created_at)
             .bind(tx.updated_at)
+            .bind(tx.deleted_at)
             .execute(&mut *db_tx)
             .await
             .map_err(StorageError::Database)?;
@@ -429,7 +585,36 @@ impl TransactionRepository {
             SELECT 
                 id, user_id, account_id, category_id, kind, amount, date, description,
                 status, transfer_id, installment_group_id, installment_number, installment_total,
-                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at
+                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at, deleted_at
+            FROM transactions
+            WHERE user_id = $1 AND installment_group_id = $2 AND deleted_at IS NULL
+            ORDER BY installment_number ASC, date ASC
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(group_id)
+        .fetch_all(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        let mut list = Vec::with_capacity(rows.len());
+        for r in rows {
+            list.push(map_transaction_row(r)?);
+        }
+        Ok(list)
+    }
+
+    pub async fn find_by_installment_group_including_deleted(
+        pool: &PgPool,
+        user_id: UserId,
+        group_id: Uuid,
+    ) -> Result<Vec<Transaction>, StorageError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT 
+                id, user_id, account_id, category_id, kind, amount, date, description,
+                status, transfer_id, installment_group_id, installment_number, installment_total,
+                recurring_rule_id, import_hash, reconciled_at, created_at, updated_at, deleted_at
             FROM transactions
             WHERE user_id = $1 AND installment_group_id = $2
             ORDER BY installment_number ASC, date ASC
@@ -482,6 +667,93 @@ impl TransactionRepository {
 
         Ok(res.rows_affected())
     }
+
+    pub async fn purge_older_than(
+        pool: &PgPool,
+        user_id: UserId,
+        cutoff: DateTime<Utc>,
+    ) -> Result<PurgeSummary, StorageError> {
+        let mut db_tx = pool.begin().await.map_err(StorageError::Database)?;
+
+        // 1. Delete attachments for purged transactions
+        sqlx::query(
+            r#"
+            DELETE FROM attachments
+            WHERE transaction_id IN (
+                SELECT id FROM transactions WHERE user_id = $1 AND deleted_at IS NOT NULL AND deleted_at <= $2
+            )
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(cutoff)
+        .execute(&mut *db_tx)
+        .await
+        .map_err(StorageError::Database)?;
+
+        // 2. Delete transaction_tags for purged transactions
+        sqlx::query(
+            r#"
+            DELETE FROM transaction_tags
+            WHERE transaction_id IN (
+                SELECT id FROM transactions WHERE user_id = $1 AND deleted_at IS NOT NULL AND deleted_at <= $2
+            )
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(cutoff)
+        .execute(&mut *db_tx)
+        .await
+        .map_err(StorageError::Database)?;
+
+        // 3. Delete transactions
+        let tx_res = sqlx::query(
+            "DELETE FROM transactions WHERE user_id = $1 AND deleted_at IS NOT NULL AND deleted_at <= $2",
+        )
+        .bind(user_id.as_uuid())
+        .bind(cutoff)
+        .execute(&mut *db_tx)
+        .await
+        .map_err(StorageError::Database)?;
+        let purged_transactions = tx_res.rows_affected();
+
+        // 4. Delete categories (only if no transactions reference them)
+        let cat_res = sqlx::query(
+            r#"
+            DELETE FROM categories
+            WHERE user_id = $1 AND deleted_at IS NOT NULL AND deleted_at <= $2
+              AND NOT EXISTS (SELECT 1 FROM transactions WHERE category_id = categories.id)
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(cutoff)
+        .execute(&mut *db_tx)
+        .await
+        .map_err(StorageError::Database)?;
+        let purged_categories = cat_res.rows_affected();
+
+        // 5. Delete accounts (only if no transactions reference them)
+        let acc_res = sqlx::query(
+            r#"
+            DELETE FROM accounts
+            WHERE user_id = $1 AND deleted_at IS NOT NULL AND deleted_at <= $2
+              AND NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = accounts.id)
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(cutoff)
+        .execute(&mut *db_tx)
+        .await
+        .map_err(StorageError::Database)?;
+        let purged_accounts = acc_res.rows_affected();
+
+        db_tx.commit().await.map_err(StorageError::Database)?;
+
+        Ok(PurgeSummary {
+            purged_transactions,
+            purged_accounts,
+            purged_categories,
+        })
+    }
 }
 
 fn map_transaction_row(row: sqlx::postgres::PgRow) -> Result<Transaction, StorageError> {
@@ -503,6 +775,8 @@ fn map_transaction_row(row: sqlx::postgres::PgRow) -> Result<Transaction, Storag
     let reconciled_at: Option<DateTime<Utc>> = row.try_get("reconciled_at").ok().flatten();
     let created_at: DateTime<Utc> = row.try_get("created_at").map_err(StorageError::Database)?;
     let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(StorageError::Database)?;
+    let deleted_at: Option<DateTime<Utc>> =
+        row.try_get("deleted_at").map_err(StorageError::Database)?;
 
     let kind: TransactionKind = kind_str
         .parse()
@@ -532,6 +806,7 @@ fn map_transaction_row(row: sqlx::postgres::PgRow) -> Result<Transaction, Storag
         reconciled_at,
         created_at,
         updated_at,
+        deleted_at,
     })
 }
 
@@ -562,6 +837,8 @@ fn map_transaction_details_row(
     let reconciled_at: Option<DateTime<Utc>> = row.try_get("reconciled_at").ok().flatten();
     let created_at: DateTime<Utc> = row.try_get("created_at").map_err(StorageError::Database)?;
     let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(StorageError::Database)?;
+    let deleted_at: Option<DateTime<Utc>> =
+        row.try_get("deleted_at").map_err(StorageError::Database)?;
 
     let kind: TransactionKind = kind_str
         .parse()
@@ -594,5 +871,6 @@ fn map_transaction_details_row(
         tags: Vec::new(),
         created_at,
         updated_at,
+        deleted_at,
     })
 }

@@ -116,6 +116,7 @@ async fn handle_export_tx(
             installment_group_id: None,
             tag: None,
             limit: args.limit,
+            deleted: Some(false),
         })
         .await
         .map_err(|e| (format!("Erro ao buscar lançamentos: {e}"), 1))?;

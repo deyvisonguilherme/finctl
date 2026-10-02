@@ -2,6 +2,7 @@ use crate::format::OutputFormat;
 use app::{CategoryItem, CategoryService};
 use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
+use dialoguer::Confirm;
 use domain::{TransactionKind, UserId};
 use sqlx::PgPool;
 
@@ -26,6 +27,16 @@ pub enum CategoryCommands {
         /// Formato de saída (table, json, csv)
         #[arg(short, long, default_value_t = OutputFormat::Table)]
         format: OutputFormat,
+    },
+
+    /// Remove uma categoria (apenas se não houver lançamentos ativos vinculados)
+    Rm {
+        /// Nome ou ID da categoria a ser removida
+        category: String,
+
+        /// Pular a confirmação interativa
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
     },
 }
 
@@ -87,6 +98,35 @@ pub async fn handle_category_command(
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                 }
             }
+            Ok(())
+        }
+        CategoryCommands::Rm { category, yes } => {
+            if !yes {
+                let confirmed = Confirm::new()
+                    .with_prompt(format!(
+                        "Tem certeza que deseja excluir a categoria '{category}'?"
+                    ))
+                    .default(false)
+                    .interact()
+                    .unwrap_or(false);
+
+                if !confirmed {
+                    println!("Operação cancelada pelo usuário.");
+                    return Ok(());
+                }
+            }
+
+            let deleted_cat =
+                service
+                    .delete_category(user_id, &category)
+                    .await
+                    .map_err(|e| match e {
+                        app::AppError::NotFound(n) => (n, 1),
+                        app::AppError::Validation(v) => (v, 1),
+                        other => (format!("{other}"), 2),
+                    })?;
+
+            println!("Categoria '{}' excluída com sucesso.", deleted_cat.name);
             Ok(())
         }
     }

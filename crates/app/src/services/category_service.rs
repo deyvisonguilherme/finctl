@@ -192,4 +192,35 @@ impl<'a> CategoryService<'a> {
 
         Ok(created_count)
     }
+
+    pub async fn delete_category(
+        &self,
+        user_id: UserId,
+        category_identifier: &str,
+    ) -> Result<Category, AppError> {
+        let category =
+            CategoryRepository::find_by_id_or_name(self.pool, user_id, category_identifier)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Categoria '{category_identifier}' não encontrada."))
+                })?;
+
+        if category.is_system {
+            return Err(AppError::Validation(
+                "Não é possível excluir categorias do sistema.".to_string(),
+            ));
+        }
+
+        let has_txs =
+            CategoryRepository::has_active_transactions(self.pool, user_id, category.id).await?;
+        if has_txs {
+            return Err(AppError::Validation(format!(
+                "Não é possível excluir a categoria '{}' pois existem transações ativas vinculadas a ela ou a suas subcategorias.",
+                category.name
+            )));
+        }
+
+        CategoryRepository::soft_delete(self.pool, user_id, category.id).await?;
+        Ok(category)
+    }
 }

@@ -56,7 +56,8 @@ impl<'a> BalanceService<'a> {
             LEFT JOIN transactions t ON a.id = t.account_id AND t.user_id = a.user_id 
                 AND ($2::DATE IS NULL OR t.date <= $2)
                 AND ($3::BOOLEAN IS TRUE OR t.status = 'paid')
-            WHERE a.user_id = $1
+                AND t.deleted_at IS NULL
+            WHERE a.user_id = $1 AND a.deleted_at IS NULL
             GROUP BY a.id, a.name, a.kind, a.initial_balance
             ORDER BY a.name ASC
             "#,

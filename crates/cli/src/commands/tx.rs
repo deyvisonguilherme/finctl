@@ -55,9 +55,23 @@ pub enum TxCommands {
         #[arg(short, long)]
         limit: Option<i64>,
 
+        /// Exibir apenas lançamentos excluídos (soft delete)
+        #[arg(long = "deleted")]
+        deleted: bool,
+
         /// Formato de saída (table, json, csv)
         #[arg(short, long, default_value_t = OutputFormat::Table)]
         format: OutputFormat,
+    },
+
+    /// Restaura um lançamento ou parcelamento excluído
+    Restore {
+        /// ID do lançamento
+        id: String,
+
+        /// Restaurar todo o grupo de parcelamento ao qual o lançamento pertence
+        #[arg(long = "group")]
+        group: bool,
     },
 
     /// Associa tags a um lançamento
@@ -157,6 +171,7 @@ pub async fn handle_tx_command(
             group,
             tag,
             limit,
+            deleted,
             format,
         } => {
             let from_d = if let Some(d) = from_date {
@@ -217,6 +232,7 @@ pub async fn handle_tx_command(
                     installment_group_id: grp_id,
                     tag,
                     limit,
+                    deleted: if deleted { Some(true) } else { Some(false) },
                 })
                 .await
                 .map_err(|e| match e {
@@ -264,6 +280,29 @@ pub async fn handle_tx_command(
                     wtr.flush()
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                 }
+            }
+            Ok(())
+        }
+        TxCommands::Restore { id, group } => {
+            let tx_uuid = Uuid::parse_str(&id)
+                .map_err(|e| (format!("ID de lançamento inválido '{id}': {e}"), 1))?;
+            let tx_id = TransactionId::new(tx_uuid);
+
+            let restored_count = service
+                .restore_transaction(user_id, tx_id, group)
+                .await
+                .map_err(|e| match e {
+                    app::AppError::NotFound(n) => (n, 1),
+                    app::AppError::Validation(v) => (v, 1),
+                    other => (format!("{other}"), 2),
+                })?;
+
+            if restored_count > 1 {
+                println!(
+                    "Sucesso: {restored_count} parcelas do parcelamento foram restauradas com sucesso."
+                );
+            } else {
+                println!("Sucesso: Lançamento '{id}' restaurado com sucesso.");
             }
             Ok(())
         }
