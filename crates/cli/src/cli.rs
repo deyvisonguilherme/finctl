@@ -136,6 +136,9 @@ pub enum Commands {
 
     /// Gera páginas de manual (man pages) da CLI
     Man(ManArgs),
+
+    /// Inicia a interface interativa no terminal (TUI)
+    Tui(TuiArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -1074,4 +1077,11 @@ pub struct ManArgs {
     /// Diretório onde as páginas de manual serão gravadas. Se omitido, imprime a página principal na saída padrão (stdout)
     #[arg(short, long)]
     pub dir: Option<PathBuf>,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct TuiArgs {
+    /// Intervalo de atualização periódica em milissegundos
+    #[arg(long, default_value = "250")]
+    pub tick_rate: u64,
 }

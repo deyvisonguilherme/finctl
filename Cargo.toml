@@ -4,6 +4,7 @@ members = [
     "crates/storage",
     "crates/app",
     "crates/cli",
+    "crates/tui",
 ]
 resolver = "2"
 
@@ -17,6 +18,7 @@ license = "MIT OR Apache-2.0"
 domain = { path = "crates/domain" }
 storage = { path = "crates/storage" }
 app = { path = "crates/app" }
+tui = { path = "crates/tui" }
 
 # Domain & Math
 rust_decimal = { version = "1.36", features = ["serde"] }
@@ -37,15 +39,18 @@ anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# CLI & UX
+# CLI, TUI & UX
 clap = { version = "4.5", features = ["derive", "env"] }
 clap_complete = "4.5"
 clap_mangen = "0.2"
 comfy-table = "7.1"
 dialoguer = "0.11"
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
 
 # Async & Storage
 tokio = { version = "1.40", features = ["full"] }
+futures-util = "0.3"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros", "chrono", "rust_decimal", "uuid", "migrate"] }
 dotenvy = "0.15"
 

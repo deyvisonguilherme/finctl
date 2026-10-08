@@ -25,6 +25,7 @@ domain = { workspace = true }
 domain = { workspace = true }
 storage = { workspace = true }
 app = { workspace = true }
+tui = { workspace = true }
 
 clap = { workspace = true }
 clap_complete = { workspace = true }
