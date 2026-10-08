@@ -155,6 +155,7 @@ impl<'a> ImportService<'a> {
         let mut imported_count = 0;
         let mut duplicates_count = 0;
         let mut errors = Vec::new();
+        let mut to_insert = Vec::new();
 
         // Track occurrences for identical (date, amount, kind, description) within the file
         let mut occurrence_counter: HashMap<String, u32> = HashMap::new();
@@ -331,10 +332,14 @@ impl<'a> ImportService<'a> {
                     None,
                 )?;
 
-                TransactionRepository::create(self.pool, &tx).await?;
+                to_insert.push(tx);
             }
 
             imported_count += 1;
+        }
+
+        if !input.dry_run && !to_insert.is_empty() {
+            TransactionRepository::create_batch(self.pool, &to_insert).await?;
         }
 
         Ok(ImportSummary {

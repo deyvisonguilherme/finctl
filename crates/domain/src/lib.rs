@@ -1,5 +1,6 @@
 pub mod account;
 pub mod attachment;
+pub mod audit;
 pub mod budget;
 pub mod card_invoice;
 pub mod category;
@@ -13,6 +14,7 @@ pub mod types;
 
 pub use account::Account;
 pub use attachment::Attachment;
+pub use audit::{AuditAction, AuditEntry};
 pub use budget::{Budget, BudgetIndicator};
 pub use card_invoice::{
     calculate_invoice_dates_for_month, calculate_invoice_dates_for_transaction, clamp_day_to_month,

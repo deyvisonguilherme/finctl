@@ -10,6 +10,7 @@ impl CategoryRepository {
     pub async fn create(pool: &PgPool, category: &Category) -> Result<(), StorageError> {
         let parent_uuid = category.parent_id.map(|id| id.as_uuid());
 
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             INSERT INTO categories (id, user_id, name, kind, parent_id, is_system, created_at)
@@ -23,11 +24,14 @@ impl CategoryRepository {
         .bind(parent_uuid)
         .bind(category.is_system)
         .bind(category.created_at)
-        .execute(pool)
+        .execute(&mut *tx)
         .await;
 
         match res {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                tx.commit().await.map_err(StorageError::Database)?;
+                Ok(())
+            }
             Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
                 Err(StorageError::UniqueViolation(format!(
                     "Já existe uma categoria com o nome '{}' sob o mesmo pai.",
@@ -167,6 +171,7 @@ impl CategoryRepository {
         user_id: UserId,
         id: CategoryId,
     ) -> Result<bool, StorageError> {
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             UPDATE categories
@@ -176,10 +181,11 @@ impl CategoryRepository {
         )
         .bind(user_id.as_uuid())
         .bind(id.as_uuid())
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(StorageError::Database)?;
 
+        tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected() > 0)
     }
 

@@ -11,6 +11,7 @@ impl AccountRepository {
     pub async fn create(pool: &PgPool, account: &Account) -> Result<(), StorageError> {
         let credit_limit_dec = account.credit_limit.map(|m| m.as_decimal());
 
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             INSERT INTO accounts (id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at)
@@ -27,11 +28,14 @@ impl AccountRepository {
         .bind(credit_limit_dec)
         .bind(account.created_at)
         .bind(account.updated_at)
-        .execute(pool)
+        .execute(&mut *tx)
         .await;
 
         match res {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                tx.commit().await.map_err(StorageError::Database)?;
+                Ok(())
+            }
             Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
                 Err(StorageError::UniqueViolation(format!(
                     "Já existe uma conta com o nome '{}'.",
@@ -117,6 +121,7 @@ impl AccountRepository {
         user_id: UserId,
         id: AccountId,
     ) -> Result<bool, StorageError> {
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             UPDATE accounts
@@ -126,10 +131,11 @@ impl AccountRepository {
         )
         .bind(user_id.as_uuid())
         .bind(id.as_uuid())
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(StorageError::Database)?;
 
+        tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected() > 0)
     }
 

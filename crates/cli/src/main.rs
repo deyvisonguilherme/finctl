@@ -3,6 +3,7 @@ pub mod format;
 
 use clap::{Parser, Subcommand};
 use commands::account::{handle_account_command, AccountCommands};
+use commands::audit::{handle_audit_command, AuditCommands};
 use commands::balance::{handle_balance_command, BalanceArgs};
 use commands::budget::{handle_budget_command, BudgetCommands};
 use commands::card::{handle_card_command, CardCommands};
@@ -130,6 +131,12 @@ enum Commands {
     Tag {
         #[command(subcommand)]
         subcommand: TagCommands,
+    },
+
+    /// Consulta registros de auditoria do sistema
+    Audit {
+        #[command(subcommand)]
+        subcommand: AuditCommands,
     },
 }
 
@@ -325,6 +332,13 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_tag_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Audit { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            handle_audit_command(subcommand, &pool).await
         }
     }
 }

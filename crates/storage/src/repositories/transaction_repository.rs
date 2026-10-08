@@ -66,6 +66,16 @@ pub struct TransactionRepository;
 
 impl TransactionRepository {
     pub async fn create(pool: &PgPool, tx: &Transaction) -> Result<(), StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
+        Self::create_with_conn(&mut *db_tx, tx).await?;
+        db_tx.commit().await.map_err(StorageError::Database)?;
+        Ok(())
+    }
+
+    pub async fn create_with_conn<'a, E>(executor: E, tx: &Transaction) -> Result<(), StorageError>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Postgres>,
+    {
         sqlx::query(
             r#"
             INSERT INTO transactions (
@@ -94,7 +104,7 @@ impl TransactionRepository {
         .bind(tx.reconciled_at)
         .bind(tx.created_at)
         .bind(tx.updated_at)
-        .execute(pool)
+        .execute(executor)
         .await
         .map_err(StorageError::Database)?;
 
@@ -341,6 +351,7 @@ impl TransactionRepository {
     }
 
     pub async fn update(pool: &PgPool, tx: &Transaction) -> Result<(), StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             UPDATE transactions
@@ -369,7 +380,7 @@ impl TransactionRepository {
         .bind(tx.deleted_at)
         .bind(tx.id.as_uuid())
         .bind(tx.user_id.as_uuid())
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
@@ -380,6 +391,7 @@ impl TransactionRepository {
             )));
         }
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(())
     }
 
@@ -393,6 +405,7 @@ impl TransactionRepository {
         }
 
         let uuids: Vec<Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let rows_affected = sqlx::query(
             r#"
             UPDATE transactions
@@ -402,11 +415,12 @@ impl TransactionRepository {
         )
         .bind(user_id.as_uuid())
         .bind(&uuids)
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?
         .rows_affected();
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(rows_affected)
     }
 
@@ -415,15 +429,17 @@ impl TransactionRepository {
         user_id: UserId,
         id: TransactionId,
     ) -> Result<bool, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             "UPDATE transactions SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
         )
         .bind(id.as_uuid())
         .bind(user_id.as_uuid())
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -432,15 +448,17 @@ impl TransactionRepository {
         user_id: UserId,
         transfer_id: Uuid,
     ) -> Result<u64, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             "UPDATE transactions SET deleted_at = NOW(), updated_at = NOW() WHERE user_id = $1 AND transfer_id = $2 AND deleted_at IS NULL",
         )
         .bind(user_id.as_uuid())
         .bind(transfer_id)
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected())
     }
 
@@ -449,6 +467,7 @@ impl TransactionRepository {
         user_id: UserId,
         group_id: Uuid,
     ) -> Result<u64, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             UPDATE transactions
@@ -458,10 +477,11 @@ impl TransactionRepository {
         )
         .bind(user_id.as_uuid())
         .bind(group_id)
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected())
     }
 
@@ -470,15 +490,17 @@ impl TransactionRepository {
         user_id: UserId,
         id: TransactionId,
     ) -> Result<bool, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             "UPDATE transactions SET deleted_at = NULL, updated_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL",
         )
         .bind(id.as_uuid())
         .bind(user_id.as_uuid())
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -487,15 +509,17 @@ impl TransactionRepository {
         user_id: UserId,
         transfer_id: Uuid,
     ) -> Result<u64, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             "UPDATE transactions SET deleted_at = NULL, updated_at = NOW() WHERE user_id = $1 AND transfer_id = $2 AND deleted_at IS NOT NULL",
         )
         .bind(user_id.as_uuid())
         .bind(transfer_id)
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected())
     }
 
@@ -504,6 +528,7 @@ impl TransactionRepository {
         user_id: UserId,
         group_id: Uuid,
     ) -> Result<u64, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             UPDATE transactions
@@ -513,10 +538,11 @@ impl TransactionRepository {
         )
         .bind(user_id.as_uuid())
         .bind(group_id)
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected())
     }
 
@@ -525,18 +551,20 @@ impl TransactionRepository {
         user_id: UserId,
         id: TransactionId,
     ) -> Result<bool, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query("DELETE FROM transactions WHERE id = $1 AND user_id = $2")
             .bind(id.as_uuid())
             .bind(user_id.as_uuid())
-            .execute(pool)
+            .execute(&mut *db_tx)
             .await
             .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected() > 0)
     }
 
     pub async fn create_batch(pool: &PgPool, txs: &[Transaction]) -> Result<(), StorageError> {
-        let mut db_tx = pool.begin().await.map_err(StorageError::Database)?;
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         for tx in txs {
             sqlx::query(
                 r#"
@@ -638,6 +666,7 @@ impl TransactionRepository {
         user_id: UserId,
         group_id: Uuid,
     ) -> Result<u64, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             DELETE FROM transactions
@@ -646,10 +675,11 @@ impl TransactionRepository {
         )
         .bind(user_id.as_uuid())
         .bind(group_id)
-        .execute(pool)
+        .execute(&mut *db_tx)
         .await
         .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected())
     }
 
@@ -658,13 +688,15 @@ impl TransactionRepository {
         user_id: UserId,
         transfer_id: Uuid,
     ) -> Result<u64, StorageError> {
+        let mut db_tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query("DELETE FROM transactions WHERE user_id = $1 AND transfer_id = $2")
             .bind(user_id.as_uuid())
             .bind(transfer_id)
-            .execute(pool)
+            .execute(&mut *db_tx)
             .await
             .map_err(StorageError::Database)?;
 
+        db_tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected())
     }
 
@@ -673,7 +705,7 @@ impl TransactionRepository {
         user_id: UserId,
         cutoff: DateTime<Utc>,
     ) -> Result<PurgeSummary, StorageError> {
-        let mut db_tx = pool.begin().await.map_err(StorageError::Database)?;
+        let mut db_tx = crate::db::begin_tx(pool).await?;
 
         // 1. Delete attachments for purged transactions
         sqlx::query(

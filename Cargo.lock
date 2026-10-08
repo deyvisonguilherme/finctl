@@ -651,6 +651,7 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "uuid",
 ]
@@ -2516,6 +2517,7 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
+ "serde_json",
  "sqlx",
  "storage",
  "testcontainers",
@@ -2524,6 +2526,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "whoami",
 ]
 
 [[package]]
@@ -3157,6 +3160,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "web-sys"
+version = "0.3.72"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6488b90108c040df0fe62fa815cbdee25124641df01814dd7282749234c6112"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "whoami"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3164,6 +3177,7 @@ checksum = "5d4a4db5077702ca3015d3d02d74974948aba2ad9e12ab7df718ee64ccd7e97d"
 dependencies = [
  "libredox",
  "wasite",
+ "web-sys",
 ]
 
 [[package]]
