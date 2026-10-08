@@ -24,6 +24,7 @@ pub use commands::report::handle_report_command;
 pub use commands::restore_cmd::handle_restore_command;
 pub use commands::tag::handle_tag_command;
 pub use commands::transfer::handle_transfer_command;
+pub use commands::tui::handle_tui_command;
 pub use commands::tx::handle_tx_command;
 
 use clap::{CommandFactory, Parser};
@@ -262,6 +263,14 @@ pub async fn run() -> Result<(), (String, u8)> {
                 .await
                 .map_err(|e| (e.to_string(), 2))?;
             handle_restore_command(args, &pool, &db_url).await
+        }
+        Some(Commands::Tui(args)) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_tui_command(args, &pool, user_id).await
         }
     }
 }

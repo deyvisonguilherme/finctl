@@ -14,14 +14,15 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
 
 ## Trilha A — TUI com `ratatui`
 
-### [ ] F6-01 — Crate `tui`: esqueleto e ciclo de eventos
+### [x] F6-01 — Crate `tui`: esqueleto e ciclo de eventos
 - **Depende de:** G-02
 - **Escopo:** nova crate `tui` no workspace e comando `finctl tui`. `ratatui` + `crossterm`; arquitetura estilo Elm (`Model`, `Message`, `update`, `view`); consultas ao banco rodam em *tasks* assíncronas e voltam por canal, sem travar o desenho da tela; *panic hook* que restaura o terminal.
 - **Critérios de aceite:**
   - A TUI abre, redesenha ao redimensionar e fecha com `q` ou `Ctrl+C` sempre restaurando o terminal (inclusive em *panic*)
   - A crate `tui` depende apenas de `app` e `domain`, sem `sqlx`
   - Teste com `TestBackend` valida a renderização do estado inicial
-- **Notas:**
+- **Notas:** Criada nova crate `tui` em `crates/tui` adicionada aos members do workspace Cargo, dependendo estritamente de `domain`, `app`, `ratatui`, `crossterm`, `tokio` e `chrono` (sem nenhuma dependência de `sqlx`). Arquitetura Elm completa implementada: `Model` (estado da aplicação e navegação de abas), `Message` (eventos e ações), `Command` (intenções de background), `update` (transições de estado puras) e `view` (layout com cabeçalho, abas preliminares, conteúdo e rodapé de atalhos). Ciclo assíncrono em `run_tui` orquestrado com `tokio::select!`, `crossterm::event::EventStream`, ticker suave e canais `mpsc` bidirecionais. O comando `finctl tui` na CLI conecta o `PgPool` e dispara tarefas de background assíncronas com os serviços de `app` sem bloquear o redesenho. Panic hook com `install_panic_hook()` e restauração de terminal com `restore_terminal()` implementados. Suíte de testes com `TestBackend` cobrindo renderização da tela inicial, ciclo de vida, atalhos de teclado (`q`, `Ctrl+C`, `Tab`, `1-3`, `r`), mensagens assíncronas e encerramento gracioso em `crates/tui/tests/tui_test.rs`.
+
 
 ### [ ] F6-02 — Dashboard
 - **Depende de:** F6-01

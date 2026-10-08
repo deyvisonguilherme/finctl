@@ -19,4 +19,5 @@ pub mod report;
 pub mod restore_cmd;
 pub mod tag;
 pub mod transfer;
+pub mod tui;
 pub mod tx;
