@@ -1,40 +1,11 @@
 use crate::format::OutputFormat;
 use app::{AuditFilter, AuditService};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use clap::{Args, Subcommand};
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 use domain::AuditAction;
 use sqlx::PgPool;
-use uuid::Uuid;
 
-#[derive(Subcommand, Debug)]
-pub enum AuditCommands {
-    /// Lista os registros de auditoria capturados pelo sistema
-    List(AuditListArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct AuditListArgs {
-    /// Filtrar por nome da tabela (transactions, accounts, categories, budgets)
-    #[arg(short, long)]
-    pub table: Option<String>,
-
-    /// Filtrar por ID do registro auditado (UUID)
-    #[arg(long)]
-    pub id: Option<Uuid>,
-
-    /// Filtrar registros a partir de uma data (YYYY-MM-DD ou RFC3339)
-    #[arg(short, long)]
-    pub since: Option<String>,
-
-    /// Limite de registros retornados
-    #[arg(short, long, default_value = "50")]
-    pub limit: Option<i64>,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
+pub use crate::cli::{AuditCommands, AuditListArgs};
 
 pub async fn handle_audit_command(cmd: AuditCommands, pool: &PgPool) -> Result<(), (String, u8)> {
     match cmd {

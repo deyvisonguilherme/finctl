@@ -6,7 +6,8 @@ pub mod repositories;
 pub mod test_helpers;
 
 pub use db::{
-    begin_tx, begin_with_actor, create_pool, detect_current_actor, ping, run_migrations, set_actor,
+    begin_tx, begin_with_actor, create_database_if_not_exists, create_pool, detect_current_actor,
+    ping, run_migrations, set_actor, DatabaseConnectionInfo,
 };
 pub use errors::StorageError;
 pub use repositories::{
@@ -18,4 +19,4 @@ pub use repositories::{
 };
 
 #[cfg(feature = "test-helpers")]
-pub use test_helpers::TestDb;
+pub use test_helpers::{setup_test_postgres_tools, TestDb};

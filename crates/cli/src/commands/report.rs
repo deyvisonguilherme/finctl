@@ -1,6 +1,5 @@
 use crate::format::OutputFormat;
 use app::{CategoryReportInput, CompareCategoriesInput, MonthlyReportInput, ReportService};
-use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Row, Table};
@@ -12,98 +11,7 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum ReportCommands {
-    /// Relatório mensal consolidado de receitas, despesas e economia
-    Monthly(MonthlyArgs),
-
-    /// Relatório de gastos ou receitas agrupados por categoria
-    Categories(CategoriesArgs),
-
-    /// Comparativo de categorias entre meses com variação absoluta e percentual
-    Compare(CompareArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct MonthlyArgs {
-    /// Mês de referência no formato AAAA-MM (ex: 2026-10) [padrão: mês atual]
-    #[arg(short, long)]
-    pub month: Option<String>,
-
-    /// Ano completo para visualização mês a mês (ex: 2026)
-    #[arg(short, long)]
-    pub year: Option<i32>,
-
-    /// Filtrar por nome ou UUID da conta
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Incluir lançamentos previstos/pendentes no relatório
-    #[arg(long)]
-    pub include_pending: bool,
-
-    /// Formato de saída dos dados
-    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
-
-#[derive(Args, Debug)]
-pub struct CategoriesArgs {
-    /// Mês de referência no formato AAAA-MM (ex: 2026-10) [padrão: mês atual]
-    #[arg(short, long)]
-    pub month: Option<String>,
-
-    /// Filtrar por tipo de transação (income/receita ou expense/despesa)
-    #[arg(short, long)]
-    pub kind: Option<TransactionKind>,
-
-    /// Profundidade da agregação: 1 (agrupa subcategorias na pai) ou 2 (detalha por subcategoria) [padrão: 2]
-    #[arg(short, long, default_value_t = 2)]
-    pub depth: u32,
-
-    /// Filtrar por nome ou UUID da conta
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Incluir lançamentos previstos/pendentes no relatório
-    #[arg(long)]
-    pub include_pending: bool,
-
-    /// Filtrar lançamentos associados a uma tag específica
-    #[arg(long)]
-    pub tag: Option<String>,
-
-    /// Formato de saída dos dados
-    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
-
-#[derive(Args, Debug)]
-pub struct CompareArgs {
-    /// Meses para comparar separados por vírgula (ex: 2026-08,2026-09)
-    #[arg(short, long, value_delimiter = ',')]
-    pub months: Option<Vec<String>>,
-
-    /// Quantidade dos últimos N meses para comparar (ex: 2, 3, 6)
-    #[arg(short, long)]
-    pub last: Option<u32>,
-
-    /// Filtrar por tipo de transação (income/receita ou expense/despesa)
-    #[arg(short, long)]
-    pub kind: Option<TransactionKind>,
-
-    /// Filtrar por nome ou UUID da conta
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Incluir lançamentos previstos/pendentes no relatório
-    #[arg(long)]
-    pub include_pending: bool,
-
-    /// Formato de saída dos dados
-    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
+pub use crate::cli::{CategoriesArgs, CompareArgs, MonthlyArgs, ReportCommands};
 
 #[derive(Serialize)]
 struct MonthlyExportItem {

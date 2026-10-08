@@ -1,34 +1,9 @@
 use app::{CreateTransferInput, TransferService};
 use chrono::{Local, NaiveDate};
-use clap::Subcommand;
 use domain::{Money, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum TransferCommands {
-    /// Registra uma transferência entre contas
-    Add {
-        /// Conta de origem (nome ou ID)
-        #[arg(long = "from")]
-        from: String,
-
-        /// Conta de destino (nome ou ID)
-        #[arg(long = "to")]
-        to: String,
-
-        /// Valor da transferência (ex: 150.00 ou 150,00)
-        #[arg(short = 'm', long = "amount")]
-        amount: String,
-
-        /// Data da transferência no formato AAAA-MM-DD (padrão: hoje)
-        #[arg(short, long)]
-        date: Option<String>,
-
-        /// Descrição personalizada opcional
-        #[arg(long = "desc")]
-        description: Option<String>,
-    },
-}
+pub use crate::cli::TransferCommands;
 
 pub async fn handle_transfer_command(
     cmd: TransferCommands,

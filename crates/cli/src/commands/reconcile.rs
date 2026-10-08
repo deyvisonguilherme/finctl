@@ -1,54 +1,12 @@
 use crate::format::OutputFormat;
 use app::{ReconcileAnalysis, ReconcileInput, ReconcileService, ReconcileStatusSummary};
-use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Table};
 use domain::UserId;
 use sqlx::PgPool;
 
-#[derive(Args, Debug)]
-pub struct ReconcileArgs {
-    #[command(subcommand)]
-    pub command: Option<ReconcileSubcommands>,
-
-    /// Nome ou UUID da conta bancária para conciliação
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Caminho do arquivo CSV de extrato bancário
-    #[arg(short, long)]
-    pub file: Option<String>,
-
-    /// Perfil de parsing do CSV (ex: 'generic', 'nubank')
-    #[arg(short, long)]
-    pub profile: Option<String>,
-
-    /// Janela de tolerância em dias para a data (padrão: 3)
-    #[arg(short, long, default_value = "3")]
-    pub days: i64,
-
-    /// Aplica as conciliações diretamente sem pedir confirmação interativa
-    #[arg(short, long)]
-    pub yes: bool,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum ReconcileSubcommands {
-    /// Exibe os lançamentos pendentes de conciliação no sistema
-    Status(ReconcileStatusArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct ReconcileStatusArgs {
-    /// Filtrar por nome ou UUID da conta
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(long, default_value = "table")]
-    pub format: OutputFormat,
-}
+pub use crate::cli::{ReconcileArgs, ReconcileStatusArgs, ReconcileSubcommands};
 
 pub async fn handle_reconcile_command(
     pool: &PgPool,

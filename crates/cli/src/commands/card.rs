@@ -1,78 +1,11 @@
 use crate::format::OutputFormat;
 use app::{CardInvoiceDetails, CardInvoiceSummary, CardService, PayCardInvoiceInput};
 use chrono::NaiveDate;
-use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 use domain::{Money, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum CardCommands {
-    /// Gerenciamento de faturas de cartão de crédito
-    Invoice {
-        #[command(subcommand)]
-        subcommand: InvoiceCommands,
-    },
-
-    /// Realiza o pagamento de uma fatura de cartão de crédito
-    Pay {
-        /// Nome ou ID do cartão de crédito
-        card: String,
-
-        /// Conta bancária pagadora de onde sairá o dinheiro
-        #[arg(long = "from")]
-        from: String,
-
-        /// Mês da fatura a pagar (AAAA-MM). Se omitido, paga a fatura fechada mais antiga
-        #[arg(short, long)]
-        month: Option<String>,
-
-        /// Valor do pagamento (se omitido, paga o saldo total restante da fatura)
-        #[arg(short = 'm', long = "amount")]
-        amount: Option<String>,
-
-        /// Data do pagamento no formato AAAA-MM-DD (padrão: hoje)
-        #[arg(short, long)]
-        date: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum InvoiceCommands {
-    /// Lista as faturas de um cartão de crédito
-    List {
-        /// Nome ou ID do cartão de crédito
-        card: String,
-
-        /// Formato de saída (table, json, csv)
-        #[arg(short, long, default_value_t = OutputFormat::Table)]
-        format: OutputFormat,
-    },
-
-    /// Exibe os detalhes e lançamentos de uma fatura
-    Show {
-        /// Nome ou ID do cartão de crédito
-        card: String,
-
-        /// Mês da fatura no formato AAAA-MM (padrão: fatura aberta atual)
-        #[arg(short, long)]
-        month: Option<String>,
-
-        /// Formato de saída (table, json, csv)
-        #[arg(short, long, default_value_t = OutputFormat::Table)]
-        format: OutputFormat,
-    },
-
-    /// Fecha uma fatura de cartão de crédito
-    Close {
-        /// Nome ou ID do cartão de crédito
-        card: String,
-
-        /// Mês da fatura no formato AAAA-MM (padrão: fatura aberta mais antiga)
-        #[arg(short, long)]
-        month: Option<String>,
-    },
-}
+pub use crate::cli::{CardCommands, InvoiceCommands};
 
 pub async fn handle_card_command(
     cmd: CardCommands,

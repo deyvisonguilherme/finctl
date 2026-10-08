@@ -1,38 +1,9 @@
 use app::{CreateTransactionInput, TransactionService};
 use chrono::{Local, NaiveDate};
-use clap::Subcommand;
 use domain::{Money, TransactionKind, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum IncomeCommands {
-    /// Registra uma nova receita
-    Add {
-        /// Nome ou ID da conta
-        #[arg(short, long)]
-        account: String,
-
-        /// Nome ou ID da categoria de receita
-        #[arg(short, long)]
-        category: String,
-
-        /// Valor da receita (ex: 3500,00 ou 3500.00)
-        #[arg(short = 'm', long = "amount")]
-        amount: String,
-
-        /// Data da receita no formato AAAA-MM-DD (padrão: hoje)
-        #[arg(short, long)]
-        date: Option<String>,
-
-        /// Descrição do lançamento
-        #[arg(long = "desc", default_value = "")]
-        description: String,
-
-        /// Registra a receita como prevista (pendente de realização)
-        #[arg(long)]
-        pending: bool,
-    },
-}
+pub use crate::cli::IncomeCommands;
 
 pub async fn handle_income_command(
     cmd: IncomeCommands,

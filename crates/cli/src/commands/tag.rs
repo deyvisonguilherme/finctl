@@ -1,50 +1,12 @@
 use crate::format::OutputFormat;
 use app::TagService;
-use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Table};
 use domain::{TagWithUsage, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum TagCommands {
-    /// Cria uma nova tag
-    Add(AddTagArgs),
-
-    /// Lista todas as tags cadastradas e a quantidade de lançamentos vinculados
-    List(ListTagArgs),
-
-    /// Remove uma tag existente
-    Rm(RmTagArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct AddTagArgs {
-    /// Nome da tag (ex: 'viagem', 'reforma')
-    pub name: String,
-}
-
-#[derive(Args, Debug)]
-pub struct ListTagArgs {
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value = "table")]
-    pub format: OutputFormat,
-}
-
-#[derive(Args, Debug)]
-pub struct RmTagArgs {
-    /// Nome ou UUID da tag a ser removida
-    pub name: String,
-
-    /// Força a exclusão sem solicitar confirmação, mesmo que esteja em uso
-    #[arg(short, long)]
-    pub yes: bool,
-
-    /// Alias para --yes
-    #[arg(short, long)]
-    pub force: bool,
-}
+pub use crate::cli::{AddTagArgs, ListTagArgs, RmTagArgs, TagCommands};
 
 pub async fn handle_tag_command(
     command: TagCommands,
@@ -98,7 +60,7 @@ pub async fn handle_tag_command(
             Ok(())
         }
         TagCommands::Rm(args) => {
-            let force = args.yes || args.force;
+            let force = args.yes;
 
             let result = match service.delete_tag(user_id, &args.name, force).await {
                 Ok(res) => res,

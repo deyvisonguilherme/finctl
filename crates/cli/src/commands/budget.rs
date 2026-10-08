@@ -1,7 +1,6 @@
 use crate::format::OutputFormat;
 use app::{BudgetService, CategoryBudgetStatus};
 use chrono::Local;
-use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Table};
@@ -9,52 +8,7 @@ use domain::{format_decimal_pt_br, BudgetIndicator, Money, UserId};
 use sqlx::PgPool;
 use storage::BudgetDetails;
 
-#[derive(Subcommand, Debug)]
-pub enum BudgetCommands {
-    /// Define ou atualiza o orçamento de uma categoria
-    Set(BudgetSetArgs),
-
-    /// Lista os orçamentos cadastrados
-    List(BudgetListArgs),
-
-    /// Exibe o status de consumo dos orçamentos para um determinado mês
-    Status(BudgetStatusArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct BudgetSetArgs {
-    /// Nome ou UUID da categoria de despesa
-    pub category: String,
-
-    /// Limite de gastos da categoria (ex: 1500,00 ou 1500.00)
-    pub amount: String,
-
-    /// Mês de referência no formato AAAA-MM (opcional; sem este parâmetro, o orçamento é padrão recorrente)
-    #[arg(short, long)]
-    pub month: Option<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct BudgetListArgs {
-    /// Filtrar por mês de referência no formato AAAA-MM
-    #[arg(short, long)]
-    pub month: Option<String>,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
-
-#[derive(Args, Debug)]
-pub struct BudgetStatusArgs {
-    /// Mês de referência no formato AAAA-MM (padrão: mês atual)
-    #[arg(short, long)]
-    pub month: Option<String>,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
+pub use crate::cli::{BudgetCommands, BudgetListArgs, BudgetSetArgs, BudgetStatusArgs};
 
 pub async fn handle_budget_command(
     pool: &PgPool,

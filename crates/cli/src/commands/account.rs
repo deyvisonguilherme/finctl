@@ -1,56 +1,11 @@
 use crate::format::OutputFormat;
 use app::AccountService;
-use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 use dialoguer::Confirm;
 use domain::{Account, AccountKind, Money, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum AccountCommands {
-    /// Adiciona uma nova conta
-    Add {
-        /// Nome da conta (ex: "Nubank", "Carteira")
-        name: String,
-
-        /// Tipo da conta: checking (corrente), savings (poupança), wallet (carteira), investment (investimento), credit_card (cartão de crédito)
-        #[arg(short, long)]
-        kind: String,
-
-        /// Saldo inicial da conta (ex: 1500,00 ou 1500.00)
-        #[arg(short, long, default_value = "0,00")]
-        initial_balance: String,
-
-        /// Dia de fechamento da fatura (1-31, para cartões de crédito)
-        #[arg(long = "closing-day")]
-        closing_day: Option<u8>,
-
-        /// Dia de vencimento da fatura (1-31, para cartões de crédito)
-        #[arg(long = "due-day")]
-        due_day: Option<u8>,
-
-        /// Limite de crédito (para cartões de crédito)
-        #[arg(long = "credit-limit", alias = "limit")]
-        credit_limit: Option<String>,
-    },
-
-    /// Lista as contas cadastradas
-    List {
-        /// Formato de saída (table, json, csv)
-        #[arg(short, long, default_value_t = OutputFormat::Table)]
-        format: OutputFormat,
-    },
-
-    /// Remove uma conta (apenas se não houver lançamentos ativos vinculados)
-    Rm {
-        /// Nome ou ID da conta a ser removida
-        account: String,
-
-        /// Pular a confirmação interativa
-        #[arg(short = 'y', long = "yes")]
-        yes: bool,
-    },
-}
+pub use crate::cli::AccountCommands;
 
 pub async fn handle_account_command(
     cmd: AccountCommands,

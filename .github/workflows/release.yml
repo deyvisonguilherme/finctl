@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+jobs:
+  build-release:
+    name: Build & Package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            use_cross: false
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+            archive: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (for cross-compilation)
+        if: matrix.use_cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Generate completions and man pages on host
+        shell: bash
+        run: |
+          cargo build --release -p finctl
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} -p finctl
+          else
+            cargo build --release --target ${{ matrix.target }} -p finctl
+          fi
+
+      - name: Package release assets (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          PKG_NAME="finctl-${TAG}-${{ matrix.target }}"
+          mkdir -p "dist/${PKG_NAME}/completions" "dist/${PKG_NAME}/man"
+          
+          cp "target/${{ matrix.target }}/release/finctl" "dist/${PKG_NAME}/"
+          cp README.md CHANGELOG.md LICENSE "dist/${PKG_NAME}/"
+          cp target/completions/* "dist/${PKG_NAME}/completions/"
+          cp target/man/* "dist/${PKG_NAME}/man/"
+          
+          cd dist
+          tar -czvf "${PKG_NAME}.tar.gz" "${PKG_NAME}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+          else
+            shasum -a 256 "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+          fi
+
+      - name: Package release assets (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $TAG = "${{ github.ref_name }}"
+          $PKG_NAME = "finctl-$TAG-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "dist/$PKG_NAME/completions", "dist/$PKG_NAME/man"
+          
+          Copy-Item "target/${{ matrix.target }}/release/finctl.exe" -Destination "dist/$PKG_NAME/"
+          Copy-Item "README.md", "CHANGELOG.md", "LICENSE" -Destination "dist/$PKG_NAME/"
+          Copy-Item "target/completions/*" -Destination "dist/$PKG_NAME/completions/"
+          Copy-Item "target/man/*" -Destination "dist/$PKG_NAME/man/"
+          
+          Compress-Archive -Path "dist/$PKG_NAME" -DestinationPath "dist/$PKG_NAME.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$PKG_NAME.zip").Hash.ToLower()
+          "$hash  $PKG_NAME.zip" | Out-File -Encoding ascii "dist/$PKG_NAME.zip.sha256"
+
+      - name: Publish Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+            dist/*.zip
+            dist/*.zip.sha256
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
