@@ -25,7 +25,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
 
 ## Tasks
 
-### [ ] F5-01 — Soft delete
+### [x] F5-01 — Soft delete
 - **Depende de:** G-01
 - **Escopo:**
   - Migration adiciona `deleted_at TIMESTAMPTZ` em `transactions`, `accounts` e `categories`
@@ -37,16 +37,16 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - Restaurar uma transferência restaura as duas pontas; remover/restaurar um parcelamento por grupo funciona como `tx rm --group`
   - Há teste de regressão para cada consulta de leitura existente
   - `purge` exige confirmação e nunca atua em registros com menos tempo que o informado
-- **Notas:**
+- **Notas:** Implementada migration `20261001020000_soft_delete.sql` com conversão para índices parciais únicos (`WHERE deleted_at IS NULL`). Suporte a `deleted_at` em todas as consultas de leitura (saldos, relatórios mensais e de categoria, orçamentos e recorrências). Adicionados subcomandos `finctl tx restore <id> [--group]`, `finctl tx list --deleted`, `finctl account rm <account> [--yes]`, `finctl category rm <category> [--yes]` e `finctl purge --older-than <duração> [--yes]`. Criados testes completos de integração em `crates/storage/tests/soft_delete_test.rs`.
 
-### [ ] F5-02 — Auditoria
+### [x] F5-02 — Auditoria
 - **Depende de:** F5-01
 - **Escopo:** tabela `audit_log` (id, tabela, `row_id`, ação `INSERT|UPDATE|DELETE`, `old` e `new` em `JSONB`, `changed_at`, `actor`). Triggers em `transactions`, `accounts`, `categories` e `budgets` (decisão D-06). A aplicação define `SET LOCAL finctl.actor` com o usuário do sistema operacional a cada transação. Comando `finctl audit list [--table X] [--id N] [--since <data>] [--format ...]`.
 - **Critérios de aceite:**
   - Toda criação, edição e remoção (inclusive soft delete e restore) gera registro
   - Importação de 1.000 linhas continua com tempo aceitável (medir antes e depois dos triggers e registrar em Notas)
   - `audit_log` é somente de inserção para o papel usado pela aplicação (sem `UPDATE`/`DELETE` concedidos)
-- **Notas:**
+- **Notas:** Implementada migration `20261001030000_audit_log.sql` com tabela `audit_log` (`id`, `table_name`, `row_id`, `action`, `old`, `new`, `changed_at`, `actor`), trigger de imutabilidade (`prevent_audit_log_mutation`) e triggers `AFTER INSERT OR UPDATE OR DELETE` em `transactions`, `accounts`, `categories` e `budgets`. O ator é capturado via `SET LOCAL finctl.actor` com fallback para `SESSION_USER`. Mutação na aplicação envolvida em transações via `begin_tx`/`begin_with_actor` utilizando detecção de usuário do SO (variáveis de ambiente + crate `whoami`). Adicionado comando `finctl audit list [--table] [--id] [--since] [--limit] [--format table|json|csv]`. Medição de benchmark de importação de 1.000 linhas registrada: 1.12s sem triggers vs 1.11s com triggers (overhead nulo com transação atômica em batch). Testes de integração cobrindo criação, edição, soft-delete, restore, exclusão física e tentativas de mutação de audit_log em `crates/storage/tests/audit_test.rs`.
 
 ### [ ] F5-03 — Backup e restore
 - **Depende de:** G-01

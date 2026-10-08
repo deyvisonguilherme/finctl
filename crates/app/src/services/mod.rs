@@ -1,5 +1,6 @@
 pub mod account_service;
 pub mod attachment_service;
+pub mod audit_service;
 pub mod balance_service;
 pub mod budget_service;
 pub mod card_service;
@@ -14,6 +15,7 @@ pub mod transfer_service;
 
 pub use account_service::{AccountService, CreateAccountInput};
 pub use attachment_service::AttachmentService;
+pub use audit_service::{AuditFilter, AuditService};
 pub use balance_service::{AccountBalance, BalanceReport, BalanceService};
 pub use budget_service::{BudgetAlert, BudgetService, CategoryBudgetStatus};
 pub use card_service::{

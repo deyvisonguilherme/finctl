@@ -22,6 +22,7 @@ pub struct BudgetRepository;
 
 impl BudgetRepository {
     pub async fn upsert(pool: &PgPool, budget: &Budget) -> Result<(), StorageError> {
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = if budget.month.is_none() {
             sqlx::query(
                 r#"
@@ -38,7 +39,7 @@ impl BudgetRepository {
             .bind(&budget.month)
             .bind(budget.created_at)
             .bind(budget.updated_at)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
         } else {
             sqlx::query(
@@ -56,11 +57,17 @@ impl BudgetRepository {
             .bind(&budget.month)
             .bind(budget.created_at)
             .bind(budget.updated_at)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
         };
 
-        res.map(|_| ()).map_err(StorageError::Database)
+        match res {
+            Ok(_) => {
+                tx.commit().await.map_err(StorageError::Database)?;
+                Ok(())
+            }
+            Err(e) => Err(StorageError::Database(e)),
+        }
     }
 
     pub async fn list_by_user(
@@ -73,7 +80,7 @@ impl BudgetRepository {
                 r#"
                 SELECT b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
                 FROM budgets b
-                JOIN categories c ON b.category_id = c.id
+                JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
                 WHERE b.user_id = $1 AND (b.month = $2 OR b.month IS NULL)
                 ORDER BY c.name ASC, b.month DESC NULLS LAST
                 "#,
@@ -88,7 +95,7 @@ impl BudgetRepository {
                 r#"
                 SELECT b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
                 FROM budgets b
-                JOIN categories c ON b.category_id = c.id
+                JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
                 WHERE b.user_id = $1
                 ORDER BY c.name ASC, b.month DESC NULLS LAST
                 "#,
@@ -117,7 +124,7 @@ impl BudgetRepository {
             SELECT DISTINCT ON (b.category_id)
                 b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
             FROM budgets b
-            JOIN categories c ON b.category_id = c.id
+            JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
             WHERE b.user_id = $1 AND (b.month = $2 OR b.month IS NULL)
             ORDER BY b.category_id, (CASE WHEN b.month = $2 THEN 0 ELSE 1 END) ASC, b.updated_at DESC
             "#,
@@ -145,7 +152,7 @@ impl BudgetRepository {
             r#"
             SELECT b.id, b.user_id, b.category_id, c.name AS category_name, b.amount, b.month, b.created_at, b.updated_at
             FROM budgets b
-            JOIN categories c ON b.category_id = c.id
+            JOIN categories c ON b.category_id = c.id AND c.deleted_at IS NULL
             WHERE b.user_id = $1 AND b.category_id = $2 AND (b.month = $3 OR b.month IS NULL)
             ORDER BY (CASE WHEN b.month = $3 THEN 0 ELSE 1 END) ASC
             LIMIT 1
@@ -170,6 +177,7 @@ impl BudgetRepository {
         user_id: UserId,
         id: BudgetId,
     ) -> Result<bool, StorageError> {
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             DELETE FROM budgets
@@ -178,10 +186,11 @@ impl BudgetRepository {
         )
         .bind(id.as_uuid())
         .bind(user_id.as_uuid())
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(StorageError::Database)?;
 
+        tx.commit().await.map_err(StorageError::Database)?;
         Ok(res.rows_affected() > 0)
     }
 }

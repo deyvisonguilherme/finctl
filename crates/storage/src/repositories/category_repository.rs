@@ -10,6 +10,7 @@ impl CategoryRepository {
     pub async fn create(pool: &PgPool, category: &Category) -> Result<(), StorageError> {
         let parent_uuid = category.parent_id.map(|id| id.as_uuid());
 
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             INSERT INTO categories (id, user_id, name, kind, parent_id, is_system, created_at)
@@ -23,11 +24,14 @@ impl CategoryRepository {
         .bind(parent_uuid)
         .bind(category.is_system)
         .bind(category.created_at)
-        .execute(pool)
+        .execute(&mut *tx)
         .await;
 
         match res {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                tx.commit().await.map_err(StorageError::Database)?;
+                Ok(())
+            }
             Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
                 Err(StorageError::UniqueViolation(format!(
                     "Já existe uma categoria com o nome '{}' sob o mesmo pai.",
@@ -44,9 +48,9 @@ impl CategoryRepository {
     ) -> Result<Vec<Category>, StorageError> {
         let rows = sqlx::query(
             r#"
-            SELECT id, user_id, name, kind, parent_id, is_system, created_at
+            SELECT id, user_id, name, kind, parent_id, is_system, created_at, deleted_at
             FROM categories
-            WHERE user_id = $1
+            WHERE user_id = $1 AND deleted_at IS NULL
             ORDER BY name ASC
             "#,
         )
@@ -73,9 +77,9 @@ impl CategoryRepository {
         let row = if let Some(uuid_val) = is_uuid {
             sqlx::query(
                 r#"
-                SELECT id, user_id, name, kind, parent_id, is_system, created_at
+                SELECT id, user_id, name, kind, parent_id, is_system, created_at, deleted_at
                 FROM categories
-                WHERE user_id = $1 AND (id = $2 OR LOWER(name) = LOWER($3))
+                WHERE user_id = $1 AND (id = $2 OR LOWER(name) = LOWER($3)) AND deleted_at IS NULL
                 LIMIT 1
                 "#,
             )
@@ -88,9 +92,9 @@ impl CategoryRepository {
         } else {
             sqlx::query(
                 r#"
-                SELECT id, user_id, name, kind, parent_id, is_system, created_at
+                SELECT id, user_id, name, kind, parent_id, is_system, created_at, deleted_at
                 FROM categories
-                WHERE user_id = $1 AND LOWER(name) = LOWER($2)
+                WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL
                 LIMIT 1
                 "#,
             )
@@ -120,9 +124,9 @@ impl CategoryRepository {
 
         let row = sqlx::query(
             r#"
-            SELECT id, user_id, name, kind, parent_id, is_system, created_at
+            SELECT id, user_id, name, kind, parent_id, is_system, created_at, deleted_at
             FROM categories
-            WHERE user_id = $1 AND kind = $2 AND is_system = true AND LOWER(name) = LOWER($3)
+            WHERE user_id = $1 AND kind = $2 AND is_system = true AND LOWER(name) = LOWER($3) AND deleted_at IS NULL
             LIMIT 1
             "#,
         )
@@ -143,9 +147,9 @@ impl CategoryRepository {
                 Err(StorageError::UniqueViolation(_)) => {
                     let existing = sqlx::query(
                         r#"
-                        SELECT id, user_id, name, kind, parent_id, is_system, created_at
+                        SELECT id, user_id, name, kind, parent_id, is_system, created_at, deleted_at
                         FROM categories
-                        WHERE user_id = $1 AND kind = $2 AND LOWER(name) = LOWER($3)
+                        WHERE user_id = $1 AND kind = $2 AND LOWER(name) = LOWER($3) AND deleted_at IS NULL
                         LIMIT 1
                         "#,
                     )
@@ -161,6 +165,52 @@ impl CategoryRepository {
             }
         }
     }
+
+    pub async fn soft_delete(
+        pool: &PgPool,
+        user_id: UserId,
+        id: CategoryId,
+    ) -> Result<bool, StorageError> {
+        let mut tx = crate::db::begin_tx(pool).await?;
+        let res = sqlx::query(
+            r#"
+            UPDATE categories
+            SET deleted_at = NOW()
+            WHERE user_id = $1 AND (id = $2 OR parent_id = $2) AND deleted_at IS NULL
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .map_err(StorageError::Database)?;
+
+        tx.commit().await.map_err(StorageError::Database)?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn has_active_transactions(
+        pool: &PgPool,
+        user_id: UserId,
+        id: CategoryId,
+    ) -> Result<bool, StorageError> {
+        let has_active: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM transactions t
+                JOIN categories c ON t.category_id = c.id
+                WHERE t.user_id = $1 AND (c.id = $2 OR c.parent_id = $2) AND t.deleted_at IS NULL
+            )
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_one(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(has_active)
+    }
 }
 
 fn map_category_row(row: sqlx::postgres::PgRow) -> Result<Category, StorageError> {
@@ -171,6 +221,8 @@ fn map_category_row(row: sqlx::postgres::PgRow) -> Result<Category, StorageError
     let parent_id_opt: Option<Uuid> = row.try_get("parent_id").map_err(StorageError::Database)?;
     let is_system: bool = row.try_get("is_system").map_err(StorageError::Database)?;
     let created_at: DateTime<Utc> = row.try_get("created_at").map_err(StorageError::Database)?;
+    let deleted_at: Option<DateTime<Utc>> =
+        row.try_get("deleted_at").map_err(StorageError::Database)?;
 
     let kind: TransactionKind = kind_str
         .parse()
@@ -184,5 +236,6 @@ fn map_category_row(row: sqlx::postgres::PgRow) -> Result<Category, StorageError
         parent_id: parent_id_opt.map(CategoryId::new),
         is_system,
         created_at,
+        deleted_at,
     })
 }

@@ -11,6 +11,7 @@ impl AccountRepository {
     pub async fn create(pool: &PgPool, account: &Account) -> Result<(), StorageError> {
         let credit_limit_dec = account.credit_limit.map(|m| m.as_decimal());
 
+        let mut tx = crate::db::begin_tx(pool).await?;
         let res = sqlx::query(
             r#"
             INSERT INTO accounts (id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at)
@@ -27,11 +28,14 @@ impl AccountRepository {
         .bind(credit_limit_dec)
         .bind(account.created_at)
         .bind(account.updated_at)
-        .execute(pool)
+        .execute(&mut *tx)
         .await;
 
         match res {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                tx.commit().await.map_err(StorageError::Database)?;
+                Ok(())
+            }
             Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
                 Err(StorageError::UniqueViolation(format!(
                     "Já existe uma conta com o nome '{}'.",
@@ -48,9 +52,9 @@ impl AccountRepository {
     ) -> Result<Vec<Account>, StorageError> {
         let rows = sqlx::query(
             r#"
-            SELECT id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at
+            SELECT id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at, deleted_at
             FROM accounts
-            WHERE user_id = $1
+            WHERE user_id = $1 AND deleted_at IS NULL
             ORDER BY name ASC
             "#,
         )
@@ -77,9 +81,9 @@ impl AccountRepository {
         let row = if let Some(uuid_val) = is_uuid {
             sqlx::query(
                 r#"
-                SELECT id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at
+                SELECT id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at, deleted_at
                 FROM accounts
-                WHERE user_id = $1 AND (id = $2 OR LOWER(name) = LOWER($3))
+                WHERE user_id = $1 AND (id = $2 OR LOWER(name) = LOWER($3)) AND deleted_at IS NULL
                 LIMIT 1
                 "#,
             )
@@ -92,9 +96,9 @@ impl AccountRepository {
         } else {
             sqlx::query(
                 r#"
-                SELECT id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at
+                SELECT id, user_id, name, kind, initial_balance, closing_day, due_day, credit_limit, created_at, updated_at, deleted_at
                 FROM accounts
-                WHERE user_id = $1 AND LOWER(name) = LOWER($2)
+                WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL
                 LIMIT 1
                 "#,
             )
@@ -110,6 +114,51 @@ impl AccountRepository {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn soft_delete(
+        pool: &PgPool,
+        user_id: UserId,
+        id: AccountId,
+    ) -> Result<bool, StorageError> {
+        let mut tx = crate::db::begin_tx(pool).await?;
+        let res = sqlx::query(
+            r#"
+            UPDATE accounts
+            SET deleted_at = NOW(), updated_at = NOW()
+            WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .map_err(StorageError::Database)?;
+
+        tx.commit().await.map_err(StorageError::Database)?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn has_active_transactions(
+        pool: &PgPool,
+        user_id: UserId,
+        id: AccountId,
+    ) -> Result<bool, StorageError> {
+        let has_active: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM transactions
+                WHERE user_id = $1 AND account_id = $2 AND deleted_at IS NULL
+            )
+            "#,
+        )
+        .bind(user_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_one(pool)
+        .await
+        .map_err(StorageError::Database)?;
+
+        Ok(has_active)
     }
 }
 
@@ -128,6 +177,8 @@ fn map_account_row(row: sqlx::postgres::PgRow) -> Result<Account, StorageError> 
         .map_err(StorageError::Database)?;
     let created_at: DateTime<Utc> = row.try_get("created_at").map_err(StorageError::Database)?;
     let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(StorageError::Database)?;
+    let deleted_at: Option<DateTime<Utc>> =
+        row.try_get("deleted_at").map_err(StorageError::Database)?;
 
     let kind: AccountKind = kind_str
         .parse()
@@ -150,5 +201,6 @@ fn map_account_row(row: sqlx::postgres::PgRow) -> Result<Account, StorageError> 
         credit_limit,
         created_at,
         updated_at,
+        deleted_at,
     })
 }

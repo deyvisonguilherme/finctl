@@ -1,4 +1,5 @@
 pub mod account;
+pub mod audit;
 pub mod balance;
 pub mod budget;
 pub mod card;
@@ -8,6 +9,7 @@ pub mod export;
 pub mod import_cmd;
 pub mod income;
 pub mod init;
+pub mod purge;
 pub mod reconcile;
 pub mod recurring;
 pub mod report;

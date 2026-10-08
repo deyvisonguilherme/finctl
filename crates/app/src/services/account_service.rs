@@ -63,4 +63,28 @@ impl<'a> AccountService<'a> {
         let accounts = AccountRepository::list_by_user(self.pool, user_id).await?;
         Ok(accounts)
     }
+
+    pub async fn delete_account(
+        &self,
+        user_id: UserId,
+        account_identifier: &str,
+    ) -> Result<Account, AppError> {
+        let account = AccountRepository::find_by_id_or_name(self.pool, user_id, account_identifier)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Conta '{account_identifier}' não encontrada."))
+            })?;
+
+        let has_txs =
+            AccountRepository::has_active_transactions(self.pool, user_id, account.id).await?;
+        if has_txs {
+            return Err(AppError::Validation(format!(
+                "Não é possível excluir a conta '{}' pois existem transações ativas vinculadas a ela.",
+                account.name
+            )));
+        }
+
+        AccountRepository::soft_delete(self.pool, user_id, account.id).await?;
+        Ok(account)
+    }
 }

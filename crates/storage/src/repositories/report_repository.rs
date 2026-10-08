@@ -56,6 +56,7 @@ impl ReportRepository {
                 COALESCE(SUM(CASE WHEN kind = 'expense' THEN amount ELSE 0 END), 0) AS total_expense
             FROM transactions
             WHERE user_id = $1
+              AND deleted_at IS NULL
               AND transfer_id IS NULL
               AND ($2::DATE IS NULL OR date >= $2)
               AND ($3::DATE IS NULL OR date <= $3)
@@ -129,8 +130,9 @@ impl ReportRepository {
                         t.amount,
                         COALESCE(c.parent_id, c.id) AS effective_category_id
                     FROM transactions t
-                    JOIN categories c ON c.id = t.category_id
+                    JOIN categories c ON c.id = t.category_id AND c.deleted_at IS NULL
                     WHERE t.user_id = $1
+                      AND t.deleted_at IS NULL
                       AND t.transfer_id IS NULL
                       AND ($2::DATE IS NULL OR t.date >= $2)
                       AND ($3::DATE IS NULL OR t.date <= $3)
@@ -152,7 +154,7 @@ impl ReportRepository {
                     COALESCE(SUM(tx.amount), 0) AS total_amount,
                     COUNT(tx.id) AS tx_count
                 FROM tx_data tx
-                JOIN categories cat ON cat.id = tx.effective_category_id
+                JOIN categories cat ON cat.id = tx.effective_category_id AND cat.deleted_at IS NULL
                 GROUP BY cat.id, cat.name, cat.kind
                 ORDER BY total_amount DESC, cat.name ASC
                 "#,
@@ -180,9 +182,10 @@ impl ReportRepository {
                     COALESCE(SUM(t.amount), 0) AS total_amount,
                     COUNT(t.id) AS tx_count
                 FROM transactions t
-                JOIN categories c ON c.id = t.category_id
-                LEFT JOIN categories p ON p.id = c.parent_id
+                JOIN categories c ON c.id = t.category_id AND c.deleted_at IS NULL
+                LEFT JOIN categories p ON p.id = c.parent_id AND p.deleted_at IS NULL
                 WHERE t.user_id = $1
+                  AND t.deleted_at IS NULL
                   AND t.transfer_id IS NULL
                   AND ($2::DATE IS NULL OR t.date >= $2)
                   AND ($3::DATE IS NULL OR t.date <= $3)
@@ -299,8 +302,9 @@ impl ReportRepository {
                 c.kind AS category_kind,
                 COALESCE(SUM(t.amount), 0) AS total_amount
             FROM transactions t
-            JOIN categories c ON c.id = t.category_id
+            JOIN categories c ON c.id = t.category_id AND c.deleted_at IS NULL
             WHERE t.user_id = $1
+              AND t.deleted_at IS NULL
               AND t.transfer_id IS NULL
               AND t.date >= $2
               AND t.date <= $3

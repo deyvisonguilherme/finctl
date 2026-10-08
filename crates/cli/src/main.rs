@@ -3,6 +3,7 @@ pub mod format;
 
 use clap::{Parser, Subcommand};
 use commands::account::{handle_account_command, AccountCommands};
+use commands::audit::{handle_audit_command, AuditCommands};
 use commands::balance::{handle_balance_command, BalanceArgs};
 use commands::budget::{handle_budget_command, BudgetCommands};
 use commands::card::{handle_card_command, CardCommands};
@@ -12,6 +13,7 @@ use commands::export::{handle_export_command, ExportCommands};
 use commands::import_cmd::{handle_import_command, ImportCommands};
 use commands::income::{handle_income_command, IncomeCommands};
 use commands::init::{handle_init_command, InitArgs};
+use commands::purge::{handle_purge_command, PurgeArgs};
 use commands::reconcile::{handle_reconcile_command, ReconcileArgs};
 use commands::recurring::{handle_recurring_command, RecurringCommands};
 use commands::report::{handle_report_command, ReportCommands};
@@ -122,10 +124,19 @@ enum Commands {
     /// Conciliação bancária de lançamentos com extrato CSV
     Reconcile(ReconcileArgs),
 
+    /// Expura definitivamente registros que foram excluídos há mais tempo que o especificado
+    Purge(PurgeArgs),
+
     /// Gerenciamento de tags para categorização transversal
     Tag {
         #[command(subcommand)]
         subcommand: TagCommands,
+    },
+
+    /// Consulta registros de auditoria do sistema
+    Audit {
+        #[command(subcommand)]
+        subcommand: AuditCommands,
     },
 }
 
@@ -306,6 +317,14 @@ async fn run() -> Result<(), (String, u8)> {
             let user_id = get_current_user_id();
             handle_reconcile_command(&pool, user_id, args).await
         }
+        Some(Commands::Purge(args)) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_purge_command(args, &pool, user_id).await
+        }
         Some(Commands::Tag { subcommand }) => {
             let db_url = get_database_url()?;
             let pool = storage::create_pool(&db_url)
@@ -313,6 +332,13 @@ async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_tag_command(subcommand, &pool, user_id).await
+        }
+        Some(Commands::Audit { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            handle_audit_command(subcommand, &pool).await
         }
     }
 }

@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use storage::{
-    AccountRepository, CardInvoiceRepository, CategoryRepository, TransactionDetails,
+    AccountRepository, CardInvoiceRepository, CategoryRepository, PurgeSummary, TransactionDetails,
     TransactionFilter, TransactionRepository,
 };
 use uuid::Uuid;
@@ -37,6 +37,7 @@ pub struct ListTransactionsInput {
     pub installment_group_id: Option<Uuid>,
     pub tag: Option<String>,
     pub limit: Option<i64>,
+    pub deleted: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -238,7 +239,7 @@ impl<'a> TransactionService<'a> {
             let end = next_month.pred_opt().unwrap_or(start);
 
             (Some(start), Some(end))
-        } else if input.installment_group_id.is_some() {
+        } else if input.installment_group_id.is_some() || input.deleted == Some(true) {
             (input.from_date, input.to_date)
         } else if input.from_date.is_none() && input.to_date.is_none() {
             // Padrão sem filtros de data: últimos 30 dias
@@ -260,6 +261,7 @@ impl<'a> TransactionService<'a> {
             installment_group_id: input.installment_group_id,
             tag: input.tag,
             limit: input.limit,
+            deleted: input.deleted,
             ..Default::default()
         };
 
@@ -502,7 +504,7 @@ impl<'a> TransactionService<'a> {
             ));
         }
 
-        let deleted_count = TransactionRepository::delete_pending_by_installment_group(
+        let deleted_count = TransactionRepository::soft_delete_pending_by_installment_group(
             self.pool, user_id, group_id,
         )
         .await?;
@@ -590,9 +592,10 @@ impl<'a> TransactionService<'a> {
             })?;
 
         if let Some(transfer_id) = tx.transfer_id {
-            TransactionRepository::delete_by_transfer_id(self.pool, user_id, transfer_id).await?;
+            TransactionRepository::soft_delete_by_transfer_id(self.pool, user_id, transfer_id)
+                .await?;
         } else {
-            let deleted = TransactionRepository::delete(self.pool, user_id, id).await?;
+            let deleted = TransactionRepository::soft_delete(self.pool, user_id, id).await?;
             if !deleted {
                 return Err(AppError::NotFound(format!(
                     "Lançamento com ID '{id}' não encontrado."
@@ -600,5 +603,93 @@ impl<'a> TransactionService<'a> {
             }
         }
         Ok(())
+    }
+
+    pub async fn restore_transaction(
+        &self,
+        user_id: UserId,
+        id: TransactionId,
+        restore_group: bool,
+    ) -> Result<u64, AppError> {
+        let tx = TransactionRepository::find_by_id_including_deleted(self.pool, user_id, id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Lançamento com ID '{id}' não encontrado."))
+            })?;
+
+        if !tx.is_deleted() {
+            return Err(AppError::Validation(format!(
+                "O lançamento com ID '{id}' não está excluído."
+            )));
+        }
+
+        if restore_group {
+            if let Some(group_id) = tx.installment_group_id {
+                let count = TransactionRepository::restore_by_installment_group(
+                    self.pool, user_id, group_id,
+                )
+                .await?;
+                return Ok(count);
+            }
+        }
+
+        if let Some(transfer_id) = tx.transfer_id {
+            let count =
+                TransactionRepository::restore_by_transfer_id(self.pool, user_id, transfer_id)
+                    .await?;
+            return Ok(count);
+        }
+
+        let restored = TransactionRepository::restore(self.pool, user_id, id).await?;
+        if restored {
+            Ok(1)
+        } else {
+            Err(AppError::NotFound(format!(
+                "Lançamento com ID '{id}' não encontrado."
+            )))
+        }
+    }
+
+    pub async fn purge_deleted(
+        &self,
+        user_id: UserId,
+        older_than_str: &str,
+    ) -> Result<PurgeSummary, AppError> {
+        let duration = parse_duration(older_than_str)?;
+        let cutoff = Utc::now() - duration;
+        let summary = TransactionRepository::purge_older_than(self.pool, user_id, cutoff).await?;
+        Ok(summary)
+    }
+}
+
+pub fn parse_duration(s: &str) -> Result<chrono::Duration, AppError> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(AppError::Validation(
+            "Duração não pode ser vazia. Exemplo: 30d, 90d, 1y, 6m.".to_string(),
+        ));
+    }
+    let (num_str, unit) = s.split_at(s.len() - 1);
+    let num: i64 = num_str.parse().map_err(|_| {
+        AppError::Validation(format!(
+            "Duração inválida '{s}'. Use formatos como 30d, 60d, 90d, 6m, 1y."
+        ))
+    })?;
+
+    if num <= 0 {
+        return Err(AppError::Validation(
+            "O valor da duração deve ser maior que zero.".to_string(),
+        ));
+    }
+
+    match unit.to_lowercase().as_str() {
+        "d" => Ok(chrono::Duration::days(num)),
+        "w" => Ok(chrono::Duration::weeks(num)),
+        "m" => Ok(chrono::Duration::days(num * 30)),
+        "y" => Ok(chrono::Duration::days(num * 365)),
+        "h" => Ok(chrono::Duration::hours(num)),
+        _ => Err(AppError::Validation(format!(
+            "Unidade de tempo desconhecida em '{s}'. Use d (dias), w (semanas), m (meses), y (anos) ou h (horas)."
+        ))),
     }
 }

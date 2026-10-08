@@ -2,6 +2,7 @@ use crate::format::OutputFormat;
 use app::AccountService;
 use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
+use dialoguer::Confirm;
 use domain::{Account, AccountKind, Money, UserId};
 use sqlx::PgPool;
 
@@ -38,6 +39,16 @@ pub enum AccountCommands {
         /// Formato de saída (table, json, csv)
         #[arg(short, long, default_value_t = OutputFormat::Table)]
         format: OutputFormat,
+    },
+
+    /// Remove uma conta (apenas se não houver lançamentos ativos vinculados)
+    Rm {
+        /// Nome ou ID da conta a ser removida
+        account: String,
+
+        /// Pular a confirmação interativa
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
     },
 }
 
@@ -167,6 +178,35 @@ pub async fn handle_account_command(
                         .map_err(|e| (format!("Erro ao gerar CSV: {e}"), 1))?;
                 }
             }
+            Ok(())
+        }
+        AccountCommands::Rm { account, yes } => {
+            if !yes {
+                let confirmed = Confirm::new()
+                    .with_prompt(format!(
+                        "Tem certeza que deseja excluir a conta '{account}'?"
+                    ))
+                    .default(false)
+                    .interact()
+                    .unwrap_or(false);
+
+                if !confirmed {
+                    println!("Operação cancelada pelo usuário.");
+                    return Ok(());
+                }
+            }
+
+            let deleted_acc =
+                service
+                    .delete_account(user_id, &account)
+                    .await
+                    .map_err(|e| match e {
+                        app::AppError::NotFound(n) => (n, 1),
+                        app::AppError::Validation(v) => (v, 1),
+                        other => (format!("{other}"), 2),
+                    })?;
+
+            println!("Conta '{}' excluída com sucesso.", deleted_acc.name);
             Ok(())
         }
     }

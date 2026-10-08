@@ -16,7 +16,7 @@ As regras e instruções operacionais para colaboradores e agentes de IA estão 
 | **Fase 2** | [`fases/fase_02.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/fase_02.md) | Relatórios mensais, por categoria, comparativos e import/export CSV | 7 / 7 | `[x]` Concluída |
 | **Fase 3** | [`fases/fase_03.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/fase_03.md) | Planejamento: status previsto × realizado, orçamentos, recorrências e parcelas | 5 / 5 | `[x]` Concluída |
 | **Fase 4** | [`fases/fase_04.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/fase_04.md) | Contas avançadas: transferências, cartão de crédito, faturas, conciliação, tags/anexos e Gate G-01 | 7 / 7 | `[x]` Concluída |
-| **Fase 5** | [`fases/fase_05.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/fase_05.md) | Robustez e release: soft delete, auditoria, backup/restore, completions, multi-arch e Gate G-02 | 0 / 7 | `[ ]` Pendente |
+| **Fase 5** | [`fases/fase_05.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/fase_05.md) | Robustez e release: soft delete, auditoria, backup/restore, completions, multi-arch e Gate G-02 | 2 / 7 | `[~]` Em andamento |
 | **Fase 6** | [`fases/fase_06.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/fase_06.md) | Evoluções: TUI com `ratatui`, Metas de economia, Projeção de fluxo de caixa e Gate G-03 | 0 / 10 | `[ ]` Pendente |
 | **Backlog** | [`fases/backlog.md`](file:///home/deyvison/Documentos/Projects/Learn/finctl/fases/backlog.md) | Ideias futuras sem prioridade definida (API HTTP, multi-moeda, webhooks) | — | `[ ]` Backlog |
 

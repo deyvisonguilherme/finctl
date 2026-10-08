@@ -256,7 +256,7 @@ impl<'a> RecurringService<'a> {
         let active_rules =
             RecurringRepository::list_by_user(self.pool, input.user_id, Some(true)).await?;
 
-        let mut db_tx = self.pool.begin().await.map_err(StorageError::Database)?;
+        let mut db_tx = storage::begin_tx(self.pool).await?;
 
         let mut generated = Vec::new();
 
