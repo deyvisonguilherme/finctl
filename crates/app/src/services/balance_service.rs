@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountBalance {
     pub account_id: AccountId,
     pub account_name: String,
@@ -17,7 +17,7 @@ pub struct AccountBalance {
     pub current_balance: Decimal,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BalanceReport {
     pub as_of_date: Option<NaiveDate>,
     pub projected: bool,

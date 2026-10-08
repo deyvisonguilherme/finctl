@@ -3198,9 +3198,12 @@ dependencies = [
  "domain",
  "futures-util",
  "ratatui",
+ "rust_decimal",
+ "rust_decimal_macros",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

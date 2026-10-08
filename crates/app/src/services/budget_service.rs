@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use storage::{BudgetDetails, BudgetRepository, CategoryRepository};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CategoryBudgetStatus {
     pub category_id: CategoryId,
     pub category_name: String,

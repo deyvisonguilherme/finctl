@@ -92,6 +92,8 @@ pub async fn handle_tx_command(
                     installment_group_id: grp_id,
                     tag,
                     limit,
+                    offset: None,
+                    search_description: None,
                     deleted: if deleted { Some(true) } else { Some(false) },
                 })
                 .await

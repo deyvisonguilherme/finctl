@@ -47,6 +47,8 @@ async fn handle_export_tx(
             installment_group_id: None,
             tag: None,
             limit: args.limit,
+            offset: None,
+            search_description: None,
             deleted: Some(false),
         })
         .await

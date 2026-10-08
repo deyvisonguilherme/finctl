@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, QueryBuilder, Row};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TransactionDetails {
     pub id: TransactionId,
     pub user_id: UserId,
@@ -52,6 +52,8 @@ pub struct TransactionFilter {
     pub reconciled: Option<bool>,
     pub tag: Option<String>,
     pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub description_query: Option<String>,
     pub deleted: Option<bool>,
 }
 
@@ -315,6 +317,14 @@ impl TransactionRepository {
             }
         }
 
+        if let Some(desc_q) = filter.description_query {
+            let trimmed = desc_q.trim();
+            if !trimmed.is_empty() {
+                builder.push(" AND t.description ILIKE ");
+                builder.push_bind(format!("%{trimmed}%"));
+            }
+        }
+
         if let Some(tag_name) = filter.tag {
             builder.push(" AND EXISTS (SELECT 1 FROM transaction_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.transaction_id = t.id AND LOWER(tg.name) = LOWER(");
             builder.push_bind(tag_name.trim().to_string());
@@ -326,6 +336,11 @@ impl TransactionRepository {
         if let Some(limit) = filter.limit {
             builder.push(" LIMIT ");
             builder.push_bind(limit);
+        }
+
+        if let Some(offset) = filter.offset {
+            builder.push(" OFFSET ");
+            builder.push_bind(offset);
         }
 
         let query = builder.build();
@@ -348,6 +363,102 @@ impl TransactionRepository {
         }
 
         Ok(results)
+    }
+
+    pub async fn count_with_details(
+        pool: &PgPool,
+        filter: TransactionFilter,
+    ) -> Result<i64, StorageError> {
+        let mut builder = QueryBuilder::new(
+            r#"
+            SELECT COUNT(t.id)
+            FROM transactions t
+            JOIN accounts a ON t.account_id = a.id
+            JOIN categories c ON t.category_id = c.id
+            WHERE t.user_id = 
+            "#,
+        );
+        builder.push_bind(filter.user_id.as_uuid());
+
+        if filter.deleted == Some(true) {
+            builder.push(" AND t.deleted_at IS NOT NULL");
+        } else {
+            builder.push(" AND t.deleted_at IS NULL");
+        }
+
+        if let Some(from) = filter.from_date {
+            builder.push(" AND t.date >= ");
+            builder.push_bind(from);
+        }
+
+        if let Some(to) = filter.to_date {
+            builder.push(" AND t.date <= ");
+            builder.push_bind(to);
+        }
+
+        if let Some(acc_id) = filter.account_id {
+            builder.push(" AND t.account_id = ");
+            builder.push_bind(acc_id.as_uuid());
+        }
+
+        if let Some(cat_id) = filter.category_id {
+            builder.push(" AND t.category_id = ");
+            builder.push_bind(cat_id.as_uuid());
+        }
+
+        if let Some(kind) = filter.kind {
+            builder.push(" AND t.kind = ");
+            builder.push_bind(kind.as_str());
+        }
+
+        if let Some(status) = filter.status {
+            builder.push(" AND t.status = ");
+            builder.push_bind(status.as_str());
+        }
+
+        if let Some(transfer_id) = filter.transfer_id {
+            builder.push(" AND t.transfer_id = ");
+            builder.push_bind(transfer_id);
+        }
+
+        if let Some(group_id) = filter.installment_group_id {
+            builder.push(" AND t.installment_group_id = ");
+            builder.push_bind(group_id);
+        }
+
+        if let Some(rule_id) = filter.recurring_rule_id {
+            builder.push(" AND t.recurring_rule_id = ");
+            builder.push_bind(rule_id);
+        }
+
+        if let Some(reconciled) = filter.reconciled {
+            if reconciled {
+                builder.push(" AND t.reconciled_at IS NOT NULL");
+            } else {
+                builder.push(" AND t.reconciled_at IS NULL");
+            }
+        }
+
+        if let Some(desc_q) = filter.description_query {
+            let trimmed = desc_q.trim();
+            if !trimmed.is_empty() {
+                builder.push(" AND t.description ILIKE ");
+                builder.push_bind(format!("%{trimmed}%"));
+            }
+        }
+
+        if let Some(tag_name) = filter.tag {
+            builder.push(" AND EXISTS (SELECT 1 FROM transaction_tags tt JOIN tags tg ON tt.tag_id = tg.id WHERE tt.transaction_id = t.id AND LOWER(tg.name) = LOWER(");
+            builder.push_bind(tag_name.trim().to_string());
+            builder.push("))");
+        }
+
+        let query = builder.build_query_scalar::<i64>();
+        let count = query
+            .fetch_one(pool)
+            .await
+            .map_err(StorageError::Database)?;
+        Ok(count)
     }
 
     pub async fn update(pool: &PgPool, tx: &Transaction) -> Result<(), StorageError> {

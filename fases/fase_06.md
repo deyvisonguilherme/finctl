@@ -24,31 +24,40 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
 - **Notas:** Criada nova crate `tui` em `crates/tui` adicionada aos members do workspace Cargo, dependendo estritamente de `domain`, `app`, `ratatui`, `crossterm`, `tokio` e `chrono` (sem nenhuma dependência de `sqlx`). Arquitetura Elm completa implementada: `Model` (estado da aplicação e navegação de abas), `Message` (eventos e ações), `Command` (intenções de background), `update` (transições de estado puras) e `view` (layout com cabeçalho, abas preliminares, conteúdo e rodapé de atalhos). Ciclo assíncrono em `run_tui` orquestrado com `tokio::select!`, `crossterm::event::EventStream`, ticker suave e canais `mpsc` bidirecionais. O comando `finctl tui` na CLI conecta o `PgPool` e dispara tarefas de background assíncronas com os serviços de `app` sem bloquear o redesenho. Panic hook com `install_panic_hook()` e restauração de terminal com `restore_terminal()` implementados. Suíte de testes com `TestBackend` cobrindo renderização da tela inicial, ciclo de vida, atalhos de teclado (`q`, `Ctrl+C`, `Tab`, `1-3`, `r`), mensagens assíncronas e encerramento gracioso em `crates/tui/tests/tui_test.rs`.
 
 
-### [ ] F6-02 — Dashboard
+### [x] F6-02 — Dashboard
 - **Depende de:** F6-01
 - **Escopo:** tela inicial com saldo por conta, resumo do mês (receitas × despesas × saldo), status dos orçamentos (barras com cor por estado) e próximos vencimentos (pendentes e faturas). Navegação por abas (`Tab`/`1–5`).
 - **Critérios de aceite:**
   - Os números batem com `finctl balance`, `report monthly` e `budget status` para os mesmos dados
   - Estados de carregamento e erro de banco são exibidos na tela, sem fechar a TUI
   - Funciona em terminal de 80×24
-- **Notas:**
+- **Notas:** Implementado Dashboard na TUI com Grid 2x2 responsivo para terminal 80x24: Quadrante 1 (Saldos por Conta e totalizador geral), Quadrante 2 (Resumo do mês corrente com receitas, despesas, saldo líquido e poupança), Quadrante 3 (Status dos orçamentos com barras de progresso coloridas por nível de alerta) e Quadrante 4 (Próximos vencimentos incluindo despesas/receitas pendentes e faturas de cartão de crédito não pagas com indicador de atraso). Criado o serviço `DashboardService` em `app` agregando `BalanceService`, `ReportService`, `BudgetService` e repositórios sem acoplar a TUI ao banco. Navegação expandida para 5 abas (`1: Dashboard`, `2: Lançamentos`, `3: Relatórios`, `4: Orçamentos`, `5: Metas`) com atalhos `Tab`, `BackTab` e teclas `1-5`. Estados de carregamento e erros de conexão tratados visualmente sem fechar a aplicação, com recarga via tecla `r`. Suíte de testes com `TestBackend` cobrindo 80x24, estados de loading/erro e navegação, além de teste de integração no storage garantindo equivalência exata dos dados com os comandos CLI.
 
-### [ ] F6-03 — Tela de lançamentos
+### [x] F6-03 — Tela de lançamentos
 - **Depende de:** F6-02
 - **Escopo:** tabela paginada com filtros (período, conta, categoria, tipo, status, tag), busca por descrição, e formulário para adicionar, editar, remover (com confirmação) e marcar como pago, reutilizando os casos de uso de `app`.
 - **Critérios de aceite:**
   - Mesmas validações da CLI (valor, categoria compatível, datas)
   - Seleção múltipla para marcar vários como pagos
   - Lista de 100 mil lançamentos navega sem travar (paginação no banco)
-- **Notas:**
+- **Notas:** Implementada tela completa de lançamentos na TUI com paginação eficiente no nível do PostgreSQL (`LIMIT`/`OFFSET` combinados com `COUNT` indexado) garantindo navegação instantânea em bases volumosas (>100k registros). A tabela apresenta cursor visual (`▶`), indicador de seleção (`[x]`), colunas formatadas (Data, Tipo, Conta, Categoria, Descrição, Valor em formato pt-BR e Status) ajustadas com precisão para caber em terminais 80×24 sem quebra de linha. Implementada barra superior de busca rápida (`/`) por descrição com debounce e indicador de filtros ativos (`f`), com modal interativo de filtros por mês (`AAAA-MM`), conta, categoria, tipo, status e tag. Implementados modais modais sobrepostos com `Clear` e estilização contextual para Criação/Edição (`a`/`e`/`Enter`) reutilizando `TransactionService` (com validações de valor positivo, categorias compatíveis e datas válidas), exclusão com diálogo de confirmação (`d`/`Enter`) e pagamento individual (`p`) ou em lote via seleção múltipla com barra de espaço (`Space`). Implementados comandos assíncronos no loop Elm desacoplados de I/O na TUI. Cobertura completa com 12 testes unitários/TUI com `TestBackend` e novo teste de integração PostgreSQL (`transaction_pagination_test.rs`) validando paginação, busca `ILIKE` e ações em lote.
 
-### [ ] F6-04 — Tela de relatórios
+### [x] F6-04 — Tela de relatórios
 - **Depende de:** F6-02
 - **Escopo:** gráfico de barras de gastos por categoria, `Sparkline`/linha de evolução mensal de receitas e despesas e comparativo entre meses, com seletor de período e alternância entre competência e incluir previstos.
 - **Critérios de aceite:**
   - Dados idênticos aos comandos `report` equivalentes
   - Legendas legíveis em 80 colunas; categorias longas são truncadas com `…`
 - **Notas:**
+  - Implementado `ReportsScreenData` e serviço agregador `ReportService::get_reports_screen_data(user_id, reference_month, include_pending)` consolidando resumo por categoria, evolução histórica de 6 meses (preenchendo meses sem lançamentos com zero) e comparativo com o mês anterior com cálculo de deltas em R$ e %.
+  - Integração assíncrona na TUI via `Command::FetchReportData` e `Message::ReportDataLoaded` garantindo reatividade sem bloquear o loop de eventos.
+  - Tela de relatórios na aba 3 da TUI com três subvisões intercambiáveis via atalhos numéricos (`1`, `2`, `3`) ou `v`:
+    - `[1] Categorias`: gráfico de distribuição horizontal com barras proporcionais em caracteres Unicode (`█░`), valores monetários e percentuais em formato pt-BR (`R$ 1.234,56`, `60,0%`), rolagem via `j`/`k` e truncamento seguro de nomes longos com elipse (`…`) adaptado a terminais 80×24.
+    - `[2] Evolução Mensal`: gráficos `Sparkline` nativos do Ratatui com histórico de receitas (verde) e despesas (vermelho), combinados com tabela de resumo mês a mês detalhando taxa de economia e saldo.
+    - `[3] Comparativo`: tabela comparativa detalhada entre o mês de referência e o mês anterior, com deltas absolutos e percentuais coloridos (verde/vermelho), e bloco de sumário de receitas, despesas e saldo líquido.
+    - Seletor de período rápido por mês com `[` (mês anterior) e `]` (próximo mês), alternância de lançamentos previstos com `i` (`[Previstos: ON/OFF]`), e modal de inserção de período customizado `AAAA-MM` com validação de entrada via tecla `p`.
+  - Testes unitários de renderização/interação (`tui_test.rs`) e teste de integração com PostgreSQL real (`reports_screen_service_test.rs`) cobrindo consistência com os relatórios do backend.
+
 
 ### [ ] F6-05 — Ajuda, atalhos e testes de interface
 - **Depende de:** F6-03, F6-04
