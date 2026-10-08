@@ -1,6 +1,7 @@
+use app::DashboardData;
 use crossterm::event::KeyEvent;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Quit,
     Key(KeyEvent),
@@ -12,5 +13,6 @@ pub enum Message {
     StatusMessage(String),
     SetLoading(bool),
     DataLoaded(String),
+    DashboardLoaded(Box<DashboardData>),
     ErrorOccurred(String),
 }

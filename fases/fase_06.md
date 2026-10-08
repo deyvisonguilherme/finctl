@@ -24,14 +24,14 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
 - **Notas:** Criada nova crate `tui` em `crates/tui` adicionada aos members do workspace Cargo, dependendo estritamente de `domain`, `app`, `ratatui`, `crossterm`, `tokio` e `chrono` (sem nenhuma dependência de `sqlx`). Arquitetura Elm completa implementada: `Model` (estado da aplicação e navegação de abas), `Message` (eventos e ações), `Command` (intenções de background), `update` (transições de estado puras) e `view` (layout com cabeçalho, abas preliminares, conteúdo e rodapé de atalhos). Ciclo assíncrono em `run_tui` orquestrado com `tokio::select!`, `crossterm::event::EventStream`, ticker suave e canais `mpsc` bidirecionais. O comando `finctl tui` na CLI conecta o `PgPool` e dispara tarefas de background assíncronas com os serviços de `app` sem bloquear o redesenho. Panic hook com `install_panic_hook()` e restauração de terminal com `restore_terminal()` implementados. Suíte de testes com `TestBackend` cobrindo renderização da tela inicial, ciclo de vida, atalhos de teclado (`q`, `Ctrl+C`, `Tab`, `1-3`, `r`), mensagens assíncronas e encerramento gracioso em `crates/tui/tests/tui_test.rs`.
 
 
-### [ ] F6-02 — Dashboard
+### [x] F6-02 — Dashboard
 - **Depende de:** F6-01
 - **Escopo:** tela inicial com saldo por conta, resumo do mês (receitas × despesas × saldo), status dos orçamentos (barras com cor por estado) e próximos vencimentos (pendentes e faturas). Navegação por abas (`Tab`/`1–5`).
 - **Critérios de aceite:**
   - Os números batem com `finctl balance`, `report monthly` e `budget status` para os mesmos dados
   - Estados de carregamento e erro de banco são exibidos na tela, sem fechar a TUI
   - Funciona em terminal de 80×24
-- **Notas:**
+- **Notas:** Implementado Dashboard na TUI com Grid 2x2 responsivo para terminal 80x24: Quadrante 1 (Saldos por Conta e totalizador geral), Quadrante 2 (Resumo do mês corrente com receitas, despesas, saldo líquido e poupança), Quadrante 3 (Status dos orçamentos com barras de progresso coloridas por nível de alerta) e Quadrante 4 (Próximos vencimentos incluindo despesas/receitas pendentes e faturas de cartão de crédito não pagas com indicador de atraso). Criado o serviço `DashboardService` em `app` agregando `BalanceService`, `ReportService`, `BudgetService` e repositórios sem acoplar a TUI ao banco. Navegação expandida para 5 abas (`1: Dashboard`, `2: Lançamentos`, `3: Relatórios`, `4: Orçamentos`, `5: Metas`) com atalhos `Tab`, `BackTab` e teclas `1-5`. Estados de carregamento e erros de conexão tratados visualmente sem fechar a aplicação, com recarga via tecla `r`. Suíte de testes com `TestBackend` cobrindo 80x24, estados de loading/erro e navegação, além de teste de integração no storage garantindo equivalência exata dos dados com os comandos CLI.
 
 ### [ ] F6-03 — Tela de lançamentos
 - **Depende de:** F6-02

@@ -25,15 +25,12 @@ pub async fn handle_tui_command(
             match cmd {
                 tui::Command::FetchInitialData | tui::Command::RefreshData => {
                     let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
-                    let balance_service = app::BalanceService::new(&pool_clone);
-                    match balance_service.get_balance(user_id, None, false).await {
-                        Ok(report) => {
-                            let summary = format!(
-                                "Contas: {} | Saldo Total: R$ {:.2}",
-                                report.accounts.len(),
-                                report.total_balance
-                            );
-                            let _ = msg_tx.send(tui::Message::DataLoaded(summary)).await;
+                    let dashboard_service = app::DashboardService::new(&pool_clone);
+                    match dashboard_service.get_dashboard_data(user_id, None).await {
+                        Ok(data) => {
+                            let _ = msg_tx
+                                .send(tui::Message::DashboardLoaded(Box::new(data)))
+                                .await;
                         }
                         Err(err) => {
                             let _ = msg_tx

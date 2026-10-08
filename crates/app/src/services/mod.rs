@@ -6,6 +6,7 @@ pub mod balance_service;
 pub mod budget_service;
 pub mod card_service;
 pub mod category_service;
+pub mod dashboard_service;
 pub mod import_service;
 pub mod reconcile_service;
 pub mod recurring_service;
@@ -13,6 +14,10 @@ pub mod report_service;
 pub mod tag_service;
 pub mod transaction_service;
 pub mod transfer_service;
+
+pub use dashboard_service::{
+    DashboardData, DashboardService, MonthlySummary, UpcomingDueItem, UpcomingKind,
+};
 
 pub use account_service::{AccountService, CreateAccountInput};
 pub use attachment_service::AttachmentService;
