@@ -1,5 +1,6 @@
 pub mod account;
 pub mod audit;
+pub mod backup_cmd;
 pub mod balance;
 pub mod budget;
 pub mod card;
@@ -13,6 +14,7 @@ pub mod purge;
 pub mod reconcile;
 pub mod recurring;
 pub mod report;
+pub mod restore_cmd;
 pub mod tag;
 pub mod transfer;
 pub mod tx;

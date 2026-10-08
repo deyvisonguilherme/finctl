@@ -48,7 +48,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - `audit_log` é somente de inserção para o papel usado pela aplicação (sem `UPDATE`/`DELETE` concedidos)
 - **Notas:** Implementada migration `20261001030000_audit_log.sql` com tabela `audit_log` (`id`, `table_name`, `row_id`, `action`, `old`, `new`, `changed_at`, `actor`), trigger de imutabilidade (`prevent_audit_log_mutation`) e triggers `AFTER INSERT OR UPDATE OR DELETE` em `transactions`, `accounts`, `categories` e `budgets`. O ator é capturado via `SET LOCAL finctl.actor` com fallback para `SESSION_USER`. Mutação na aplicação envolvida em transações via `begin_tx`/`begin_with_actor` utilizando detecção de usuário do SO (variáveis de ambiente + crate `whoami`). Adicionado comando `finctl audit list [--table] [--id] [--since] [--limit] [--format table|json|csv]`. Medição de benchmark de importação de 1.000 linhas registrada: 1.12s sem triggers vs 1.11s com triggers (overhead nulo com transação atômica em batch). Testes de integração cobrindo criação, edição, soft-delete, restore, exclusão física e tentativas de mutação de audit_log em `crates/storage/tests/audit_test.rs`.
 
-### [ ] F5-03 — Backup e restore
+### [x] F5-03 — Backup e restore
 - **Depende de:** G-01
 - **Escopo:**
   - `finctl backup --output <dir> [--keep N]` executa `pg_dump` em formato custom (`-Fc`) com nome com data e hora e remove os backups mais antigos além de `N`
@@ -58,7 +58,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - Erro claro quando `pg_dump`/`pg_restore` não estão no `PATH`
   - Teste de integração: backup → apagar dados → restore → saldos e relatórios idênticos
   - Backup interrompido não deixa arquivo parcial com nome final (escrever em temporário e renomear)
-- **Notas:**
+- **Notas:** Implementados comandos `finctl backup` e `finctl restore` (com aliases `finctl db backup` e `finctl db restore`). O backup grava inicialmente em arquivo `.tmp` e realiza rename atômico para `finctl_backup_YYYYMMDD_HHMMSS.dump`. Rotação via `--keep N` exclui apenas os arquivos mais antigos mantendo os `N` mais recentes. Credenciais e parâmetros de conexão são passados isoladamente por variáveis de ambiente de processo (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`), nunca via flags/argumentos de CLI. Se `--into` não for fornecido, cria automaticamente um banco isolado `<banco>_restore_YYYYMMDD_HHMMSS`. Restauração sobre o banco atual exige a flag `--yes` ou confirmação interativa com digitação do nome exato do banco. Mensagens claras com código de saída 2 caso `pg_dump` ou `pg_restore` não estejam disponíveis. Criada suíte completa de testes de integração em `crates/storage/tests/backup_restore_test.rs` validando fluxo completo, retenção e salvaguardas.
 
 ### [ ] F5-04 — Autocompletar e man page
 - **Depende de:** G-01

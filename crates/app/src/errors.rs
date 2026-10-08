@@ -15,4 +15,7 @@ pub enum AppError {
 
     #[error("Não encontrado: {0}")]
     NotFound(String),
+
+    #[error("{0}")]
+    Infrastructure(String),
 }

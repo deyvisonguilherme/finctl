@@ -4,6 +4,7 @@ pub mod format;
 use clap::{Parser, Subcommand};
 use commands::account::{handle_account_command, AccountCommands};
 use commands::audit::{handle_audit_command, AuditCommands};
+use commands::backup_cmd::{handle_backup_command, BackupArgs};
 use commands::balance::{handle_balance_command, BalanceArgs};
 use commands::budget::{handle_budget_command, BudgetCommands};
 use commands::card::{handle_card_command, CardCommands};
@@ -17,6 +18,7 @@ use commands::purge::{handle_purge_command, PurgeArgs};
 use commands::reconcile::{handle_reconcile_command, ReconcileArgs};
 use commands::recurring::{handle_recurring_command, RecurringCommands};
 use commands::report::{handle_report_command, ReportCommands};
+use commands::restore_cmd::{handle_restore_command, RestoreArgs};
 use commands::tag::{handle_tag_command, TagCommands};
 use commands::transfer::{handle_transfer_command, TransferCommands};
 use commands::tx::{handle_tx_command, TxCommands};
@@ -138,6 +140,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AuditCommands,
     },
+
+    /// Executa o backup lógico do banco de dados em formato custom (-Fc)
+    Backup(BackupArgs),
+
+    /// Restaura um backup de banco de dados via pg_restore
+    Restore(RestoreArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -146,6 +154,10 @@ enum DbCommands {
     Ping,
     /// Aplica as migrações pendentes no banco de dados
     Migrate,
+    /// Executa o backup do banco de dados (alias para `finctl backup`)
+    Backup(BackupArgs),
+    /// Restaura um backup do banco de dados (alias para `finctl restore`)
+    Restore(RestoreArgs),
 }
 
 pub fn get_database_url() -> Result<String, (String, u8)> {
@@ -203,6 +215,20 @@ async fn run() -> Result<(), (String, u8)> {
                     .map_err(|e| (e.to_string(), 2))?;
                 println!("Migrações aplicadas com sucesso!");
                 Ok(())
+            }
+            DbCommands::Backup(args) => {
+                let db_url = get_database_url()?;
+                let pool = storage::create_pool(&db_url)
+                    .await
+                    .map_err(|e| (e.to_string(), 2))?;
+                handle_backup_command(args, &pool, &db_url).await
+            }
+            DbCommands::Restore(args) => {
+                let db_url = get_database_url()?;
+                let pool = storage::create_pool(&db_url)
+                    .await
+                    .map_err(|e| (e.to_string(), 2))?;
+                handle_restore_command(args, &pool, &db_url).await
             }
         },
         Some(Commands::Account { subcommand }) => {
@@ -339,6 +365,20 @@ async fn run() -> Result<(), (String, u8)> {
                 .await
                 .map_err(|e| (e.to_string(), 2))?;
             handle_audit_command(subcommand, &pool).await
+        }
+        Some(Commands::Backup(args)) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            handle_backup_command(args, &pool, &db_url).await
+        }
+        Some(Commands::Restore(args)) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            handle_restore_command(args, &pool, &db_url).await
         }
     }
 }

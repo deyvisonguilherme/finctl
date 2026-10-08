@@ -29,6 +29,7 @@ csv = "1.3"
 toml = "0.8"
 sha2 = "0.10"
 whoami = "1.5"
+url = "2.5"
 
 # Error handling & Logging
 thiserror = "1.0"
