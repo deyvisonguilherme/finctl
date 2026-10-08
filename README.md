@@ -328,6 +328,60 @@ Todos os comandos de listagem e relatórios suportam o argumento `--format`:
 
 ---
 
+### 13. Interface Interativa em Terminal (`finctl tui`)
+
+O `finctl` oferece uma interface rica baseada em texto (**TUI**) desenvolvida com `ratatui` e `crossterm`, utilizando arquitetura estilo Elm (`Model`, `Message`, `update`, `view`) com consultas de banco assíncronas em segundo plano.
+
+- **Iniciar a TUI:**
+  ```bash
+  # Iniciar com o tema escuro padrão:
+  finctl tui
+
+  # Iniciar especificando tema claro:
+  finctl tui --theme light
+  ```
+
+#### Mapa Completo de Teclas e Atalhos
+
+| Contexto | Tecla(s) | Ação / Descrição |
+|---|---|---|
+| **Geral & Navegação** | `?` | Abrir / fechar painel de ajuda |
+| | `t` | Alternar tema visual dinamicamente (Claro / Escuro) |
+| | `q` ou `Ctrl+C` | Encerrar a aplicação TUI |
+| | `Tab` / `BackTab` | Avançar / retroceder aba ativa |
+| | `1` a `5` | Acesso direto às abas (`1: Dash`, `2: Lanç.`, `3: Relat.`, `4: Orçam.`, `5: Metas`) |
+| | `r` | Recarregar dados do banco de dados |
+| **Dashboard** | `r` | Atualizar indicadores e resumos do mês |
+| **Lançamentos (Tabela)** | `j` / `↓` | Mover cursor para o lançamento abaixo |
+| | `k` / `↑` | Mover cursor para o lançamento acima |
+| | `Espaço` | Alternar seleção do item (suporte a seleção múltipla) |
+| | `[` / `PgUp` | Página anterior de lançamentos |
+| | `]` / `PgDn` | Próxima página de lançamentos |
+| | `a` | Abrir formulário para adicionar novo lançamento |
+| | `e` ou `Enter` | Editar lançamento sob o cursor |
+| | `d` | Excluir lançamento(s) selecionado(s) com confirmação |
+| | `p` | Marcar lançamento(s) selecionado(s) como pago |
+| | `/` | Iniciar busca rápida textual por descrição |
+| | `f` | Abrir modal com filtros avançados (mês, conta, categoria, tipo, status, tag) |
+| **Modais & Formulários** | `Tab` / `Enter` | Avançar para o próximo campo |
+| | `Shift+Tab` / `↑` | Retroceder para o campo anterior |
+| | `Espaço` | Alternar valor em campos de múltipla escolha (Tipo, Status) |
+| | `Esc` | Cancelar edição / fechar diálogo |
+| **Relatórios** | `1` | Subvisão: Gastos por Categorias (com barras Unicode) |
+| | `2` | Subvisão: Evolução Mensal (Sparklines de receitas e despesas) |
+| | `3` | Subvisão: Comparativo detalhado com mês anterior |
+| | `[` | Mês de referência anterior |
+| | `]` | Próximo mês de referência |
+| | `i` | Alternar inclusão de lançamentos previstos (`pending`) |
+| | `p` | Definir mês de referência customizado (`AAAA-MM`) |
+| | `j` / `k` | Rolar tabela de categorias ou comparativo |
+| **Painel de Ajuda** | `j` / `↓` | Rolar texto de ajuda para baixo |
+| | `k` / `↑` | Rolar texto de ajuda para cima |
+| | `?` ou `Esc` | Fechar o painel de ajuda |
+
+---
+
+
 ## 🛠️ Arquitetura e Qualidade
 
 O projeto adota Clean Architecture em camadas com responsabilidades estritamente separadas:

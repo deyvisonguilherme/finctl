@@ -59,14 +59,16 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Testes unitários de renderização/interação (`tui_test.rs`) e teste de integração com PostgreSQL real (`reports_screen_service_test.rs`) cobrindo consistência com os relatórios do backend.
 
 
-### [ ] F6-05 — Ajuda, atalhos e testes de interface
+### [x] F6-05 — Ajuda, atalhos e testes de interface
 - **Depende de:** F6-03, F6-04
 - **Escopo:** painel de ajuda (`?`) com todos os atalhos, barra de status com dicas contextuais, tema claro/escuro configurável, snapshots de tela com `insta` usando `TestBackend`.
 - **Critérios de aceite:**
   - Cada tela tem ao menos um teste de snapshot
   - Todos os atalhos aparecem no painel de ajuda (teste que compara a lista de atalhos registrados com a exibida)
   - A seção de README sobre a TUI inclui o mapa de teclas
-- **Notas:**
+- **Notas:** Implementado sistema completo de temas com `ThemeMode` (Dark/Light) e paleta semântica (`Theme`), alternável dinamicamente em tempo de execução via tecla `t` e configurável na inicialização através de `finctl tui --theme <dark|light>`. Criado módulo canônico de atalhos `shortcuts.rs` com `ShortcutRegistry` categorizado por contexto (*Geral & Navegação*, *Dashboard*, *Lançamentos*, *Modais & Formulários*, *Relatórios*, *Ajuda*). Implementado painel modal de ajuda sobreposto (`?`) com rolagem vertical (`j`/`k`/setas) e fechamento com `?` ou `Esc`. Implementada barra de rodapé com atalhos contextuais dinâmicos conforme tela, modal ou busca ativa, além de status e erros de conexão. Adicionada seção completa no `README.md` detalhando o uso da TUI e tabela com o mapa integral de teclas. Suíte de testes expandida com teste unitário validando que 100% dos atalhos registrados no `ShortcutRegistry` aparecem no painel de ajuda, testes de ciclo de vida/navegação do modal e temas, e 8 testes de snapshot com `insta` em resolução 80×24 com relógio determinístico cobrindo todas as telas e variantes visuais (Dashboard, Lançamentos em tabela e modal, Relatórios por categorias, evolução e comparativo, Ajuda e Tema Claro).
+
+
 
 ### [ ] F6-09 — Comando de início: escolher TUI ou linha de comando
 - **Depende de:** F6-01

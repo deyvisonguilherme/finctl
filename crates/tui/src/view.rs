@@ -2,6 +2,7 @@ use crate::model::{
     DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model,
     PeriodModalState, ReportSubView, Tab, TransactionFormState,
 };
+use crate::shortcuts::{ShortcutCategory, ShortcutRegistry};
 use app::{DashboardData, UpcomingKind};
 use domain::{format_decimal_pt_br, BudgetIndicator, TransactionKind, TransactionStatus};
 use ratatui::{
@@ -33,19 +34,27 @@ pub fn view(model: &Model, frame: &mut Frame) {
     render_header(model, frame, chunks[0]);
     render_main(model, frame, chunks[1]);
     render_footer(model, frame, chunks[2]);
+
+    // Modal de Ajuda sobreposto sobre a área de conteúdo
+    if model.is_help_open {
+        render_help_modal(model, frame, chunks[1]);
+    }
 }
 
 fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
+    let theme = model.theme;
     let clock_str = model.last_tick.format("%d/%m/%Y %H:%M:%S").to_string();
     let status_indicator = if model.error_message.is_some() {
         Span::styled(
             " [Erro de Conexão]",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.danger)
+                .add_modifier(Modifier::BOLD),
         )
     } else if model.is_loading {
-        Span::styled(" [Sincronizando...]", Style::default().fg(Color::Yellow))
+        Span::styled(" [Sincronizando...]", Style::default().fg(theme.warning))
     } else {
-        Span::styled(" [Online]", Style::default().fg(Color::Green))
+        Span::styled(" [Online]", Style::default().fg(theme.success))
     };
 
     let title_desc = if area.width < 90 {
@@ -58,8 +67,8 @@ fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
         Span::styled(
             " finctl ",
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
+                .fg(theme.header_fg)
+                .bg(theme.header_bg)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(title_desc),
@@ -67,13 +76,13 @@ fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
     ]);
 
     let clock_line = Line::from(vec![
-        Span::styled(clock_str, Style::default().fg(Color::DarkGray)),
+        Span::styled(clock_str, Style::default().fg(theme.fg_muted)),
         Span::raw(" "),
     ]);
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+        .border_style(Style::default().fg(theme.border));
 
     let header_layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -90,6 +99,7 @@ fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
 }
 
 fn render_main(model: &Model, frame: &mut Frame, area: Rect) {
+    let theme = model.theme;
     // Dividir a área principal em: Barra de Abas (altura 3) e Área de Visualização (restante)
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -101,13 +111,18 @@ fn render_main(model: &Model, frame: &mut Frame, area: Rect) {
 
     let tabs = Tabs::new(tab_titles)
         .select(model.active_tab.index())
-        .block(Block::default().borders(Borders::ALL).title(" Navegação "))
-        .style(Style::default().fg(Color::White))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Navegação ")
+                .border_style(Style::default().fg(theme.border)),
+        )
+        .style(Style::default().fg(theme.tab_inactive_fg))
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.tab_active_fg)
                 .add_modifier(Modifier::BOLD)
-                .bg(Color::DarkGray),
+                .bg(theme.tab_active_bg),
         );
 
     frame.render_widget(tabs, main_chunks[0]);
@@ -1765,46 +1780,213 @@ fn render_goals_tab(_model: &Model, frame: &mut Frame, area: Rect) {
 }
 
 fn render_footer(model: &Model, frame: &mut Frame, area: Rect) {
-    let shortcuts = Line::from(vec![
-        Span::styled(" [q/Ctrl+C] ", Style::default().fg(Color::Yellow)),
-        Span::raw("Sair  "),
-        Span::styled(" [Tab/1-5] ", Style::default().fg(Color::Yellow)),
-        Span::raw("Mudar Aba  "),
-        Span::styled(" [r] ", Style::default().fg(Color::Yellow)),
-        Span::raw("Atualizar  "),
-    ]);
+    let theme = model.theme;
+    let contextual_shortcuts = build_contextual_shortcuts(model);
 
     let status = if let Some(ref err) = model.error_message {
         Line::from(vec![
             Span::styled(
                 "ERRO: ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.danger)
+                    .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(err, Style::default().fg(Color::Red)),
+            Span::styled(err, Style::default().fg(theme.danger)),
             Span::raw(" "),
         ])
     } else {
         Line::from(vec![
-            Span::raw("Status: "),
-            Span::styled(&model.status_message, Style::default().fg(Color::White)),
+            Span::styled("Status: ", Style::default().fg(theme.fg_muted)),
+            Span::styled(&model.status_message, Style::default().fg(theme.fg)),
             Span::raw(" "),
         ])
     };
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme.fg_muted));
 
+    let right_width = 32.min(area.width.saturating_sub(45)).max(24);
     let footer_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(35), Constraint::Length(35)])
+        .constraints([Constraint::Min(45), Constraint::Length(right_width)])
         .split(area);
 
-    let shortcuts_p = Paragraph::new(shortcuts).block(block.clone());
+    let shortcuts_p = Paragraph::new(Line::from(contextual_shortcuts)).block(block.clone());
     let status_p = Paragraph::new(status)
         .alignment(Alignment::Right)
         .block(block);
 
     frame.render_widget(shortcuts_p, footer_layout[0]);
     frame.render_widget(status_p, footer_layout[1]);
+}
+
+fn build_contextual_shortcuts(model: &Model) -> Vec<Span<'static>> {
+    let theme = model.theme;
+    let mut spans = Vec::new();
+
+    let mut push_sc = |key: &'static str, desc: &'static str| {
+        spans.push(Span::styled(
+            format!(" [{key}] "),
+            Style::default()
+                .fg(theme.shortcut_key)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!("{desc} "),
+            Style::default().fg(theme.shortcut_desc),
+        ));
+    };
+
+    if model.is_help_open {
+        push_sc("j/k/Setas", "Rolar");
+        push_sc("?/Esc", "Fechar Ajuda");
+    } else if model.active_tab == Tab::Transactions {
+        if model.transactions_state.delete_confirm.is_some() {
+            push_sc("Enter/s", "Confirmar");
+            push_sc("Esc/n", "Cancelar");
+        } else if model.transactions_state.form_modal.is_some()
+            || model.transactions_state.filter_modal.is_some()
+        {
+            push_sc("Tab/Enter", "Próx");
+            push_sc("Space", "Alternar");
+            push_sc("Esc", "Cancelar");
+        } else if model.transactions_state.is_searching {
+            push_sc("Digitar", "Busca");
+            push_sc("Enter/Esc", "Concluir");
+        } else {
+            push_sc("a", "Novo");
+            push_sc("e", "Edit");
+            push_sc("d", "Excl");
+            push_sc("p", "Pagar");
+            push_sc("Space", "Sel");
+            push_sc("/", "Busca");
+            push_sc("f", "Filtro");
+            push_sc("Tab/1-5", "Mudar Aba");
+        }
+    } else if model.active_tab == Tab::Reports {
+        if model.reports_state.period_modal.is_some() {
+            push_sc("Digitar", "AAAA-MM");
+            push_sc("Enter", "Aplicar");
+            push_sc("Esc", "Cancelar");
+        } else {
+            push_sc("1-3", "Visão");
+            push_sc("[ / ]", "Mês");
+            push_sc("i", "Previstos");
+            push_sc("p", "Período");
+            push_sc("Tab/1-5", "Mudar Aba");
+        }
+    } else {
+        // Dashboard ou abas gerais
+        push_sc("q", "Sair");
+        push_sc("Tab/1-5", "Abas");
+        push_sc("r", "Atualizar");
+        push_sc("t", "Tema");
+        push_sc("?", "Ajuda");
+    }
+
+    spans
+}
+
+pub fn build_help_lines(model: &Model) -> Vec<Line<'static>> {
+    let theme = model.theme;
+    let mut lines = Vec::new();
+
+    lines.push(Line::from(vec![Span::styled(
+        "  MAPA COMPLETO DE ATALHOS DE TECLADO  ",
+        Style::default()
+            .fg(theme.header_fg)
+            .bg(theme.header_bg)
+            .add_modifier(Modifier::BOLD),
+    )]));
+    lines.push(Line::from(""));
+
+    for category in ShortcutCategory::ALL {
+        let shortcuts = ShortcutRegistry::by_category(category);
+        if shortcuts.is_empty() {
+            continue;
+        }
+
+        lines.push(Line::from(vec![Span::styled(
+            format!("── {} ──", category.title()),
+            Style::default()
+                .fg(theme.border_focus)
+                .add_modifier(Modifier::BOLD),
+        )]));
+
+        for sc in shortcuts {
+            let key_str = format!("  {:18} ", sc.key);
+            lines.push(Line::from(vec![
+                Span::styled(
+                    key_str,
+                    Style::default()
+                        .fg(theme.shortcut_key)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(sc.description, Style::default().fg(theme.shortcut_desc)),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled(
+            "Dica: ",
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Pressione 't' para alternar o tema (Claro/Escuro). Pressione '?' ou 'Esc' para fechar.",
+            Style::default().fg(theme.fg_muted),
+        ),
+    ]));
+
+    lines
+}
+
+pub fn generate_help_text(model: &Model) -> String {
+    let lines = build_help_lines(model);
+    let mut result = String::new();
+    for line in lines {
+        for span in line.spans {
+            result.push_str(&span.content);
+        }
+        result.push('\n');
+    }
+    result
+}
+
+pub fn render_help_modal(model: &Model, frame: &mut Frame, area: Rect) {
+    let theme = model.theme;
+
+    // Dimensões do modal de ajuda: centralizado
+    let modal_width = (area.width.saturating_sub(4)).clamp(20, 78);
+    let modal_height = (area.height.saturating_sub(2)).clamp(10, 54);
+
+    let popup_area = Rect {
+        x: area.x + (area.width.saturating_sub(modal_width)) / 2,
+        y: area.y + (area.height.saturating_sub(modal_height)) / 2,
+        width: modal_width,
+        height: modal_height,
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Ajuda & Mapa de Atalhos [?] ")
+        .border_style(Style::default().fg(theme.modal_border));
+
+    let help_lines = build_help_lines(model);
+    let inner_height = popup_area.height.saturating_sub(2) as usize;
+    let max_scroll = help_lines.len().saturating_sub(inner_height);
+    let scroll_y = model.help_scroll.min(max_scroll);
+
+    let paragraph = Paragraph::new(help_lines)
+        .block(block)
+        .scroll((scroll_y as u16, 0));
+
+    frame.render_widget(paragraph, popup_area);
 }

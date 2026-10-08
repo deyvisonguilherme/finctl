@@ -167,7 +167,11 @@ pub async fn handle_tui_command(
     });
 
     // 5. Executar o ciclo de eventos da TUI
-    let model = tui::Model::new();
+    let theme_mode = match _args.theme.as_str() {
+        "light" => tui::ThemeMode::Light,
+        _ => tui::ThemeMode::Dark,
+    };
+    let model = tui::Model::new_with_theme(theme_mode);
     let run_res = tui::run_tui(&mut terminal, model, Some(cmd_tx), Some(msg_rx)).await;
 
     // 6. Restaurar o terminal original

@@ -13,8 +13,8 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use rust_decimal_macros::dec;
 use tui::{
-    install_panic_hook, restore_terminal, run_tui, update, view, Command, Message, Model,
-    ReportSubView, Tab,
+    generate_help_text, install_panic_hook, restore_terminal, run_tui, update, view, Command,
+    Message, Model, ReportSubView, ShortcutRegistry, Tab, Theme, ThemeMode,
 };
 
 fn buffer_to_string(terminal: &Terminal<TestBackend>) -> String {
@@ -992,4 +992,366 @@ fn test_reports_navigation_month_and_pending_toggle_and_period_modal() {
     }
     assert!(model.reports_state.period_modal.is_none());
     assert_eq!(model.reports_state.reference_month, "2026-03");
+}
+
+fn set_deterministic_clock(model: &mut Model) {
+    let naive = NaiveDate::from_ymd_opt(2026, 10, 8)
+        .unwrap()
+        .and_hms_opt(12, 0, 0)
+        .unwrap();
+    model.last_tick =
+        chrono::DateTime::from_naive_utc_and_offset(naive, *chrono::Local::now().offset());
+}
+
+fn create_mock_dashboard_model() -> Model {
+    let mut model = Model::new();
+    let data = DashboardData {
+        balance_report: BalanceReport {
+            as_of_date: None,
+            projected: false,
+            accounts: vec![
+                AccountBalance {
+                    account_id: AccountId::generate(),
+                    account_name: "Nubank".to_string(),
+                    account_kind: AccountKind::Checking,
+                    initial_balance: Money::from_decimal_non_negative(dec!(1000.00)).unwrap(),
+                    total_income: Money::from_decimal_non_negative(dec!(2000.00)).unwrap(),
+                    total_expense: Money::from_decimal_non_negative(dec!(500.00)).unwrap(),
+                    current_balance: dec!(2500.00),
+                },
+                AccountBalance {
+                    account_id: AccountId::generate(),
+                    account_name: "Carteira".to_string(),
+                    account_kind: AccountKind::Wallet,
+                    initial_balance: Money::from_decimal_non_negative(dec!(50.00)).unwrap(),
+                    total_income: Money::from_decimal_non_negative(dec!(100.00)).unwrap(),
+                    total_expense: Money::from_decimal_non_negative(dec!(0.00)).unwrap(),
+                    current_balance: dec!(150.00),
+                },
+            ],
+            total_initial_balance: dec!(1050.00),
+            total_income: dec!(2100.00),
+            total_expense: dec!(500.00),
+            total_balance: dec!(2650.00),
+        },
+        monthly_summary: MonthlySummary {
+            month: "2026-10".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(4000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(1800.00)).unwrap(),
+            net_balance: dec!(2200.00),
+            savings_rate: dec!(55.0),
+        },
+        budget_statuses: vec![CategoryBudgetStatus {
+            category_id: CategoryId::generate(),
+            category_name: "Alimentação".to_string(),
+            budget_amount: Money::from_decimal_non_negative(dec!(1000.00)).unwrap(),
+            consumed_amount: Money::from_decimal_non_negative(dec!(750.00)).unwrap(),
+            remaining_amount: dec!(250.00),
+            percentage: dec!(75.0),
+            indicator: BudgetIndicator::Ok,
+            is_monthly_exception: false,
+        }],
+        upcoming_items: vec![
+            UpcomingDueItem {
+                due_date: NaiveDate::from_ymd_opt(2026, 10, 20).unwrap(),
+                description: "Internet Fibra".to_string(),
+                amount: Money::from_decimal_non_negative(dec!(120.00)).unwrap(),
+                kind: UpcomingKind::Expense,
+                is_overdue: false,
+                account_name: Some("Nubank".to_string()),
+            },
+            UpcomingDueItem {
+                due_date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
+                description: "Energia Elétrica".to_string(),
+                amount: Money::from_decimal_non_negative(dec!(230.00)).unwrap(),
+                kind: UpcomingKind::Expense,
+                is_overdue: true,
+                account_name: Some("Nubank".to_string()),
+            },
+        ],
+    };
+    model.dashboard_data = Some(data);
+    model
+}
+
+fn create_mock_transactions_model() -> Model {
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+    let tx1 = sample_transaction(
+        "Supermercado",
+        Money::from_decimal_non_negative(dec!(150.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Paid,
+    );
+    let tx2 = sample_transaction(
+        "Salário Mensal",
+        Money::from_decimal_non_negative(dec!(3500.00)).unwrap(),
+        TransactionKind::Income,
+        TransactionStatus::Paid,
+    );
+    let tx3 = sample_transaction(
+        "Conta de Luz",
+        Money::from_decimal_non_negative(dec!(120.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Pending,
+    );
+    let paginated = PaginatedTransactions {
+        items: vec![tx1, tx2, tx3],
+        total_count: 3,
+        page: 1,
+        page_size: 15,
+        total_pages: 1,
+    };
+    model.transactions_state.items = paginated.items;
+    model.transactions_state.total_count = paginated.total_count;
+    model.transactions_state.page = paginated.page;
+    model.transactions_state.page_size = paginated.page_size;
+    model.transactions_state.total_pages = paginated.total_pages;
+    model
+}
+
+fn create_mock_reports_model(subview: ReportSubView) -> Model {
+    let mut model = Model::new();
+    model.active_tab = Tab::Reports;
+    model.reports_state.active_subview = subview;
+    model.reports_state.reference_month = "2026-10".to_string();
+    model.reports_state.data = Some(sample_reports_data());
+    model
+}
+
+#[test]
+fn test_all_shortcuts_appear_in_help_panel() {
+    let mut model = Model::new();
+    model.is_help_open = true;
+
+    // 1. Validar que cada atalho registrado aparece no texto gerado para a tela de ajuda
+    let all_shortcuts = ShortcutRegistry::all();
+    let help_text = generate_help_text(&model);
+
+    for sc in &all_shortcuts {
+        assert!(
+            help_text.contains(sc.key),
+            "A tecla '{}' deve estar presente no texto do painel de ajuda",
+            sc.key
+        );
+        assert!(
+            help_text.contains(sc.description),
+            "A descrição '{}' deve estar presente no texto do painel de ajuda",
+            sc.description
+        );
+    }
+
+    // 2. Renderizar no TestBackend com altura suficiente (100x60) para garantir desenho visual no buffer
+    let backend = TestBackend::new(100, 60);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal de teste");
+
+    terminal
+        .draw(|f| view(&model, f))
+        .expect("Deve renderizar view");
+    let buffer_text = buffer_to_string(&terminal);
+
+    for sc in &all_shortcuts {
+        assert!(
+            buffer_text.contains(sc.key),
+            "Buffer do terminal deve conter a tecla '{}'",
+            sc.key
+        );
+    }
+}
+
+#[test]
+fn test_help_modal_lifecycle_navigation_and_closing() {
+    let mut model = Model::new();
+    assert!(!model.is_help_open);
+
+    // 1. Abrir com tecla '?'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE)),
+    );
+    assert!(model.is_help_open);
+    assert_eq!(model.help_scroll, 0);
+
+    // 2. Rolar para baixo com 'j'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.help_scroll, 1);
+
+    // 3. Rolar para cima com 'k'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.help_scroll, 0);
+
+    // 4. Fechar com 'Esc'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+    );
+    assert!(!model.is_help_open);
+
+    // 5. Reabrir com ToggleHelp e fechar com '?'
+    let _ = update(&mut model, Message::ToggleHelp);
+    assert!(model.is_help_open);
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE)),
+    );
+    assert!(!model.is_help_open);
+}
+
+#[test]
+fn test_theme_toggle_and_shortcuts() {
+    let mut model = Model::new();
+    assert_eq!(model.theme.mode, ThemeMode::Dark);
+
+    // 1. Alternar tema com tecla 't'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.theme.mode, ThemeMode::Light);
+    assert!(model.status_message.contains("Claro"));
+
+    // 2. Alternar de volta com mensagem ToggleTheme
+    let _ = update(&mut model, Message::ToggleTheme);
+    assert_eq!(model.theme.mode, ThemeMode::Dark);
+    assert!(model.status_message.contains("Escuro"));
+
+    // 3. Definir tema explicitamente
+    let _ = update(&mut model, Message::SetTheme(ThemeMode::Light));
+    assert_eq!(model.theme.mode, ThemeMode::Light);
+}
+
+#[test]
+fn test_contextual_footer_tips_per_tab_and_modal() {
+    let mut model = Model::new();
+    let backend = TestBackend::new(100, 25);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal de teste");
+
+    // Dashboard
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Tab/1-5") || text.contains("Mudar Aba"));
+    assert!(text.contains("Atualizar"));
+    assert!(text.contains("Ajuda"));
+
+    // Lançamentos
+    model.active_tab = Tab::Transactions;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Novo"));
+    assert!(text.contains("Edit"));
+    assert!(text.contains("Excl"));
+    assert!(text.contains("Pagar"));
+
+    // Lançamentos com busca ativa
+    model.transactions_state.is_searching = true;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Busca") || text.contains("Digitar"));
+
+    // Relatórios
+    model.transactions_state.is_searching = false;
+    model.active_tab = Tab::Reports;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Visão") || text.contains("Mês"));
+
+    // Ajuda aberta
+    model.is_help_open = true;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Rolar"));
+    assert!(text.contains("Fechar Ajuda"));
+}
+
+#[test]
+fn test_snapshot_dashboard() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_dashboard_model();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("dashboard_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_transactions_table() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_transactions_model();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("transactions_table_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_transactions_add_modal() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_transactions_model();
+    set_deterministic_clock(&mut model);
+    // Abrir modal de criação
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+    );
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("transactions_modal_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_reports_categories() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_reports_model(ReportSubView::Categories);
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("reports_categories_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_reports_evolution() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_reports_model(ReportSubView::MonthlyEvolution);
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("reports_evolution_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_reports_comparison() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_reports_model(ReportSubView::Comparison);
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("reports_comparison_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_help_modal() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_dashboard_model();
+    set_deterministic_clock(&mut model);
+    model.is_help_open = true;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("help_modal_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_light_theme() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_dashboard_model();
+    model.theme = Theme::light();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("light_theme_80x24", buffer_to_string(&terminal));
 }

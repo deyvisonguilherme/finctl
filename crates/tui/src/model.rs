@@ -1,3 +1,4 @@
+use crate::theme::{Theme, ThemeMode};
 use app::{DashboardData, ReportsScreenData, TransactionDetails};
 use chrono::{DateTime, Datelike, Local};
 use domain::{TransactionId, TransactionKind, TransactionStatus};
@@ -326,6 +327,9 @@ pub struct Model {
     pub transactions_state: TransactionsTabState,
     pub reports_state: ReportsTabState,
     pub error_message: Option<String>,
+    pub is_help_open: bool,
+    pub help_scroll: usize,
+    pub theme: Theme,
 }
 
 impl Default for Model {
@@ -336,6 +340,10 @@ impl Default for Model {
 
 impl Model {
     pub fn new() -> Self {
+        Self::new_with_theme(ThemeMode::Dark)
+    }
+
+    pub fn new_with_theme(theme_mode: ThemeMode) -> Self {
         Self {
             active_tab: Tab::Dashboard,
             running: true,
@@ -348,6 +356,9 @@ impl Model {
             transactions_state: TransactionsTabState::default(),
             reports_state: ReportsTabState::default(),
             error_message: None,
+            is_help_open: false,
+            help_scroll: 0,
+            theme: Theme::from_mode(theme_mode),
         }
     }
 }

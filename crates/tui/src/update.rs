@@ -4,6 +4,7 @@ use crate::model::{
     DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model,
     PeriodModalState, ReportSubView, Tab, TransactionFilterState, TransactionFormState,
 };
+use crate::theme::{Theme, ThemeMode};
 use app::ListTransactionsInput;
 use chrono::{Local, NaiveDate};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -125,12 +126,66 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
             model.status_message = format!("Erro: {err}");
             None
         }
+        Message::ToggleHelp => {
+            model.is_help_open = !model.is_help_open;
+            if model.is_help_open {
+                model.help_scroll = 0;
+            }
+            None
+        }
+        Message::CloseHelp => {
+            model.is_help_open = false;
+            None
+        }
+        Message::ToggleTheme => {
+            model.theme = model.theme.toggle();
+            let name = match model.theme.mode {
+                ThemeMode::Dark => "Escuro",
+                ThemeMode::Light => "Claro",
+            };
+            model.status_message = format!("Tema visual alterado para: {name}");
+            None
+        }
+        Message::SetTheme(mode) => {
+            model.theme = Theme::from_mode(mode);
+            None
+        }
     }
 }
 
 fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return update(model, Message::Quit);
+    }
+
+    // Se o painel de ajuda estiver aberto, capturar navegação ou fechamento
+    if model.is_help_open {
+        match key.code {
+            KeyCode::Esc
+            | KeyCode::Char('?')
+            | KeyCode::Char('q')
+            | KeyCode::Char('Q')
+            | KeyCode::Enter => {
+                model.is_help_open = false;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                model.help_scroll = model.help_scroll.saturating_add(1);
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                model.help_scroll = model.help_scroll.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                model.help_scroll = model.help_scroll.saturating_add(5);
+            }
+            KeyCode::PageUp => {
+                model.help_scroll = model.help_scroll.saturating_sub(5);
+            }
+            KeyCode::Home => {
+                model.help_scroll = 0;
+            }
+            _ => {}
+        }
+        return None;
     }
 
     // Se estivermos na aba de Lançamentos e algum modal ou busca estiver ativa
@@ -442,6 +497,12 @@ fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
         KeyCode::Char('3') => update(model, Message::SelectTab(2)),
         KeyCode::Char('4') => update(model, Message::SelectTab(3)),
         KeyCode::Char('5') => update(model, Message::SelectTab(4)),
+        KeyCode::Char('?') => {
+            model.is_help_open = true;
+            model.help_scroll = 0;
+            None
+        }
+        KeyCode::Char('t') | KeyCode::Char('T') => update(model, Message::ToggleTheme),
         KeyCode::Char('r') | KeyCode::Char('R') => {
             model.is_loading = true;
             model.error_message = None;

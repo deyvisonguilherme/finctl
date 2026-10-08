@@ -1,3 +1,4 @@
+use crate::theme::ThemeMode;
 use app::{DashboardData, PaginatedTransactions, ReportsScreenData};
 use crossterm::event::KeyEvent;
 
@@ -18,4 +19,8 @@ pub enum Message {
     TransactionActionSuccess(String),
     ReportDataLoaded(Box<ReportsScreenData>),
     ErrorOccurred(String),
+    ToggleHelp,
+    CloseHelp,
+    ToggleTheme,
+    SetTheme(ThemeMode),
 }

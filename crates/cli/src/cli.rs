@@ -1084,4 +1084,8 @@ pub struct TuiArgs {
     /// Intervalo de atualização periódica em milissegundos
     #[arg(long, default_value = "250")]
     pub tick_rate: u64,
+
+    /// Tema visual da interface interativa (dark | light)
+    #[arg(long, default_value = "dark", value_parser = ["dark", "light"])]
+    pub theme: String,
 }
