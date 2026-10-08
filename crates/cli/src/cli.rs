@@ -5,10 +5,15 @@ use domain::TransactionKind;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+pub const FINCTL_VERSION: &str = match option_env!("FINCTL_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Parser, Debug)]
 #[command(
     name = "finctl",
-    version,
+    version = FINCTL_VERSION,
     about = "Sistema de controle financeiro pessoal"
 )]
 pub struct Cli {

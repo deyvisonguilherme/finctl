@@ -69,7 +69,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - Nenhum comando fica sem descrição no `--help`
 - **Notas:** Implementados comandos `finctl completions <shell>` (suportando `bash`, `zsh`, `fish`, `powershell` e `elvish` emitidos diretamente no `stdout`) e `finctl man [--dir <pasta>]` (emitindo no `stdout` ou gerando todos os arquivos `.1` no diretório informado). Implementado `build.rs` no crate `cli` que gera automaticamente as 69 páginas man em `target/man` e `OUT_DIR/man` durante builds de release (`cargo build --release`). Centralizadas definições e documentações de CLI em `crates/cli/src/cli.rs` e exposta a biblioteca `finctl_cli`. Criado teste automatizado recursivo na árvore de comandos que garante que 100% dos comandos, subcomandos e argumentos/flags possuem textos descritivos em português. Testes de fumaça para bash (`bash -n`) e zsh (`zsh -n`) adicionados em `crates/cli/tests/completions_and_man_test.rs`.
 
-### [ ] F5-05 — Release multiplataforma
+### [x] F5-05 — Release multiplataforma
 - **Depende de:** F5-03, F5-04
 - **Escopo:** workflow do GitHub Actions disparado por tag `vX.Y.Z` que compila para Linux (x86_64 e aarch64), macOS (x86_64 e arm64) e Windows (x86_64); `SQLX_OFFLINE=true` com `.sqlx/` versionado; migrations embutidas no binário (`sqlx::migrate!`); artefatos `.tar.gz`/`.zip` com SHA-256; `CHANGELOG.md`; versionamento semântico.
 - **Critérios de aceite:**
@@ -77,7 +77,7 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - Cada artefato inclui binário, completions, man page e README
   - `finctl --version` mostra versão e commit
   - Release de teste (tag `v0.0.0-rc`) publica todos os artefatos
-- **Notas:**
+- **Notas:** Implementado workflow do GitHub Actions em `.github/workflows/release.yml` disparado por tags `v*`. Matriz multi-arquitetura configurada para 5 targets: Linux x86_64 (`x86_64-unknown-linux-gnu`), Linux ARM64 (`aarch64-unknown-linux-gnu` via `cross`), macOS Intel (`x86_64-apple-darwin`), macOS Apple Silicon (`aarch64-apple-darwin`) e Windows x64 (`x86_64-pc-windows-msvc`). Builds em modo offline suportados com `SQLX_OFFLINE=true` e `.sqlx/` versionado no repositório. Migrations são embutidas via `sqlx::migrate!`. Binários empacotados em subpastas `finctl-<tag>-<target>/` para evitar *tarbombing*, acompanhados de documentação (`README.md`, `CHANGELOG.md`, `LICENSE`), completions para 5 shells (`bash`, `zsh`, `fish`, `powershell`, `elvish`) e todas as 69 páginas de manual geradas automaticamente em release. Gerados arquivos `.tar.gz` (Unix) e `.zip` (Windows) com seus respectivos checksums `.sha256`. Publicação automatizada com detecção de pré-release (ex: `v0.0.0-rc`). O `crates/cli/build.rs` detecta o commit git (`git rev-parse --short HEAD`) e data de commit (`git log -1 --format=%cs`), formatando `finctl --version` no padrão `finctl 0.2.0 (5118b6b 2026-10-08)`. Criado script de empacotamento local `scripts/package.sh`, `CHANGELOG.md` e suíte de testes de versionamento em `crates/cli/tests/version_test.rs`.
 
 ### [ ] F5-06 — Hardening de qualidade e desempenho
 - **Depende de:** G-01

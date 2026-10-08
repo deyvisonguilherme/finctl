@@ -57,7 +57,7 @@ pub async fn run() -> Result<(), (String, u8)> {
 
     match cli.command {
         None => {
-            println!("finctl {}", env!("CARGO_PKG_VERSION"));
+            println!("finctl {}", FINCTL_VERSION);
             println!("Use `finctl --help` para ver os comandos disponíveis.");
             Ok(())
         }
