@@ -1,14 +1,8 @@
 use app::CategoryService;
-use clap::Args;
 use domain::UserId;
 use sqlx::PgPool;
 
-#[derive(Args, Debug)]
-pub struct InitArgs {
-    /// Inicializa o banco sem criar as categorias padrão
-    #[arg(long = "no-seed")]
-    pub no_seed: bool,
-}
+pub use crate::cli::InitArgs;
 
 pub async fn handle_init_command(
     args: InitArgs,

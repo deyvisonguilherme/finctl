@@ -4,7 +4,6 @@ use app::{
     RunRecurringSummary,
 };
 use chrono::NaiveDate;
-use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Table};
@@ -13,136 +12,10 @@ use domain::{Money, RecurringFrequency, RecurringRuleId, TransactionKind, UserId
 use sqlx::PgPool;
 use storage::RecurringRuleDetails;
 
-#[derive(Subcommand, Debug)]
-pub enum RecurringCommands {
-    /// Cadastra uma nova regra de recorrência
-    Add(RecurringAddArgs),
-
-    /// Lista as regras de recorrência cadastradas
-    List(RecurringListArgs),
-
-    /// Edita uma regra de recorrência existente
-    Edit(RecurringEditArgs),
-
-    /// Pausa uma regra de recorrência
-    Pause(RecurringIdArg),
-
-    /// Retoma uma regra de recorrência pausada
-    Resume(RecurringIdArg),
-
-    /// Remove uma regra de recorrência (não apaga lançamentos já gerados)
-    Rm(RecurringRmArgs),
-
-    /// Processa as regras de recorrência e gera os lançamentos pendentes
-    Run(RecurringRunArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct RecurringAddArgs {
-    /// Nome ou ID da conta
-    #[arg(short, long)]
-    pub account: String,
-
-    /// Nome ou ID da categoria
-    #[arg(short, long)]
-    pub category: String,
-
-    /// Valor monetário da recorrência (ex: 2500,00 ou 2500.00)
-    #[arg(short = 'm', long = "amount")]
-    pub amount: String,
-
-    /// Tipo do lançamento: expense (despesa) ou income (receita) [padrão: expense]
-    #[arg(short = 'k', long, default_value = "expense")]
-    pub kind: String,
-
-    /// Frequência da recorrência: weekly (semanal), monthly (mensal), yearly (anual) [padrão: monthly]
-    #[arg(short, long, default_value = "monthly")]
-    pub frequency: String,
-
-    /// Dia do mês (1-31) ou dia da semana (1-7 para semanal)
-    #[arg(short, long)]
-    pub day: Option<u32>,
-
-    /// Descrição da recorrência
-    #[arg(long = "desc", default_value = "")]
-    pub description: String,
-
-    /// Data de início no formato AAAA-MM-DD (padrão: hoje)
-    #[arg(long = "start")]
-    pub start_date: Option<String>,
-
-    /// Data de término no formato AAAA-MM-DD (opcional)
-    #[arg(long = "end")]
-    pub end_date: Option<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct RecurringListArgs {
-    /// Exibe também as regras pausadas/inativas
-    #[arg(long)]
-    pub all: bool,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
-
-#[derive(Args, Debug)]
-pub struct RecurringEditArgs {
-    /// ID da regra de recorrência
-    pub id: String,
-
-    /// Novo nome ou ID da conta
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Novo nome ou ID da categoria
-    #[arg(short, long)]
-    pub category: Option<String>,
-
-    /// Novo valor monetário
-    #[arg(short = 'm', long = "amount")]
-    pub amount: Option<String>,
-
-    /// Nova descrição
-    #[arg(long = "desc")]
-    pub description: Option<String>,
-
-    /// Nova data de término no formato AAAA-MM-DD
-    #[arg(long = "end")]
-    pub end_date: Option<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct RecurringIdArg {
-    /// ID da regra de recorrência
-    pub id: String,
-}
-
-#[derive(Args, Debug)]
-pub struct RecurringRmArgs {
-    /// ID da regra de recorrência
-    pub id: String,
-
-    /// Pular confirmação interativa
-    #[arg(short = 'y', long = "yes")]
-    pub yes: bool,
-}
-
-#[derive(Args, Debug)]
-pub struct RecurringRunArgs {
-    /// Data limite para geração dos lançamentos no formato AAAA-MM-DD (padrão: hoje)
-    #[arg(long)]
-    pub until: Option<String>,
-
-    /// Executa em modo de simulação sem salvar alterações no banco
-    #[arg(long)]
-    pub dry_run: bool,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
+pub use crate::cli::{
+    RecurringAddArgs, RecurringCommands, RecurringEditArgs, RecurringIdArg, RecurringListArgs,
+    RecurringRmArgs, RecurringRunArgs,
+};
 
 pub async fn handle_recurring_command(
     pool: &PgPool,

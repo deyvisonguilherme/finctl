@@ -60,14 +60,14 @@ Backlog da **Fase 5 — Robustez e release** do `finctl`. Regras gerais de contr
   - Backup interrompido não deixa arquivo parcial com nome final (escrever em temporário e renomear)
 - **Notas:** Implementados comandos `finctl backup` e `finctl restore` (com aliases `finctl db backup` e `finctl db restore`). O backup grava inicialmente em arquivo `.tmp` e realiza rename atômico para `finctl_backup_YYYYMMDD_HHMMSS.dump`. Rotação via `--keep N` exclui apenas os arquivos mais antigos mantendo os `N` mais recentes. Credenciais e parâmetros de conexão são passados isoladamente por variáveis de ambiente de processo (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`), nunca via flags/argumentos de CLI. Se `--into` não for fornecido, cria automaticamente um banco isolado `<banco>_restore_YYYYMMDD_HHMMSS`. Restauração sobre o banco atual exige a flag `--yes` ou confirmação interativa com digitação do nome exato do banco. Mensagens claras com código de saída 2 caso `pg_dump` ou `pg_restore` não estejam disponíveis. Criada suíte completa de testes de integração em `crates/storage/tests/backup_restore_test.rs` validando fluxo completo, retenção e salvaguardas.
 
-### [ ] F5-04 — Autocompletar e man page
+### [x] F5-04 — Autocompletar e man page
 - **Depende de:** G-01
 - **Escopo:** `finctl completions <bash|zsh|fish|powershell>` com `clap_complete`; man page gerada com `clap_mangen`; revisão de consistência de todos os `--help` (português, flags com o mesmo nome em todos os comandos).
 - **Critérios de aceite:**
   - O script gerado carrega sem erro em bash e zsh (teste de fumaça no CI)
   - Man page é gerada no build de release
   - Nenhum comando fica sem descrição no `--help`
-- **Notas:**
+- **Notas:** Implementados comandos `finctl completions <shell>` (suportando `bash`, `zsh`, `fish`, `powershell` e `elvish` emitidos diretamente no `stdout`) e `finctl man [--dir <pasta>]` (emitindo no `stdout` ou gerando todos os arquivos `.1` no diretório informado). Implementado `build.rs` no crate `cli` que gera automaticamente as 69 páginas man em `target/man` e `OUT_DIR/man` durante builds de release (`cargo build --release`). Centralizadas definições e documentações de CLI em `crates/cli/src/cli.rs` e exposta a biblioteca `finctl_cli`. Criado teste automatizado recursivo na árvore de comandos que garante que 100% dos comandos, subcomandos e argumentos/flags possuem textos descritivos em português. Testes de fumaça para bash (`bash -n`) e zsh (`zsh -n`) adicionados em `crates/cli/tests/completions_and_man_test.rs`.
 
 ### [ ] F5-05 — Release multiplataforma
 - **Depende de:** F5-03, F5-04

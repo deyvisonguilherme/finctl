@@ -1,34 +1,11 @@
 use app::{ImportCsvInput, ImportService};
-use clap::{Args, Subcommand};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, Color, Table};
 use domain::UserId;
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum ImportCommands {
-    /// Importa lançamentos a partir de um arquivo CSV
-    Csv(ImportCsvArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct ImportCsvArgs {
-    /// Caminho do arquivo CSV para importação
-    pub file: String,
-
-    /// Nome ou UUID da conta bancária de destino
-    #[arg(short, long)]
-    pub account: String,
-
-    /// Nome do perfil de importação (ex: 'generic', 'nubank') [padrão: generic]
-    #[arg(short, long)]
-    pub profile: Option<String>,
-
-    /// Simula a importação sem gravar alterações no banco de dados
-    #[arg(long)]
-    pub dry_run: bool,
-}
+pub use crate::cli::{ImportCommands, ImportCsvArgs};
 
 pub async fn handle_import_command(
     pool: &PgPool,

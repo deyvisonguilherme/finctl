@@ -1,19 +1,9 @@
 use app::TransactionService;
-use clap::Args;
 use dialoguer::Confirm;
 use domain::UserId;
 use sqlx::PgPool;
 
-#[derive(Args, Debug)]
-pub struct PurgeArgs {
-    /// Tempo limite para expurgo definitivo de registros excluídos (ex: 30d, 60d, 90d, 6m, 1y)
-    #[arg(long = "older-than")]
-    pub older_than: String,
-
-    /// Pular confirmação interativa
-    #[arg(short = 'y', long = "yes")]
-    pub yes: bool,
-}
+pub use crate::cli::PurgeArgs;
 
 pub async fn handle_purge_command(
     args: PurgeArgs,

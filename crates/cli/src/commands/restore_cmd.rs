@@ -1,24 +1,10 @@
 use app::{BackupService, RestoreInput};
-use clap::Args;
 use dialoguer::Input;
 use sqlx::PgPool;
 use std::io::IsTerminal;
-use std::path::PathBuf;
 use storage::DatabaseConnectionInfo;
 
-#[derive(Args, Debug, Clone)]
-pub struct RestoreArgs {
-    /// Caminho do arquivo de backup (.dump) a ser restaurado
-    pub file: PathBuf,
-
-    /// Nome do banco de dados de destino (se omitido, restaura em um novo banco gerado automaticamente)
-    #[arg(short, long)]
-    pub into: Option<String>,
-
-    /// Confirmação expressa para restaurar sobre o banco de dados atual
-    #[arg(short = 'y', long = "yes")]
-    pub yes: bool,
-}
+pub use crate::cli::RestoreArgs;
 
 pub async fn handle_restore_command(
     args: RestoreArgs,

@@ -1,25 +1,11 @@
 use crate::format::OutputFormat;
 use app::{BalanceReport, BalanceService};
 use chrono::NaiveDate;
-use clap::Args;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 use domain::{format_decimal_pt_br, UserId};
 use sqlx::PgPool;
 
-#[derive(Args, Debug)]
-pub struct BalanceArgs {
-    /// Data limite para cálculo do saldo no formato AAAA-MM-DD (ex: 2026-10-01)
-    #[arg(short, long)]
-    pub at: Option<String>,
-
-    /// Inclui lançamentos previstos (pendentes) no cálculo do saldo projetado
-    #[arg(long)]
-    pub projected: bool,
-
-    /// Formato de saída (table, json, csv)
-    #[arg(short, long, default_value_t = OutputFormat::Table)]
-    pub format: OutputFormat,
-}
+pub use crate::cli::BalanceArgs;
 
 pub async fn handle_balance_command(
     args: BalanceArgs,

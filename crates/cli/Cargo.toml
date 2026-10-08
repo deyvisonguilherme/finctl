@@ -4,9 +4,22 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "finctl_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "finctl"
 path = "src/main.rs"
+
+[build-dependencies]
+clap = { workspace = true }
+clap_complete = { workspace = true }
+clap_mangen = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+domain = { workspace = true }
 
 [dependencies]
 domain = { workspace = true }
@@ -14,6 +27,8 @@ storage = { workspace = true }
 app = { workspace = true }
 
 clap = { workspace = true }
+clap_complete = { workspace = true }
+clap_mangen = { workspace = true }
 comfy-table = { workspace = true }
 dialoguer = { workspace = true }
 tokio = { workspace = true }

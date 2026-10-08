@@ -1,18 +1,7 @@
 use app::{BackupInput, BackupService};
-use clap::Args;
 use sqlx::PgPool;
-use std::path::PathBuf;
 
-#[derive(Args, Debug, Clone)]
-pub struct BackupArgs {
-    /// Diretório onde o arquivo de backup (.dump) será salvo
-    #[arg(short, long)]
-    pub output: PathBuf,
-
-    /// Quantidade de backups mais recentes a manter (remove os excedentes mais antigos)
-    #[arg(short, long)]
-    pub keep: Option<usize>,
-}
+pub use crate::cli::BackupArgs;
 
 pub async fn handle_backup_command(
     args: BackupArgs,

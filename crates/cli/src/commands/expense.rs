@@ -1,46 +1,9 @@
 use app::{CreateInstallmentsInput, CreateTransactionInput, TransactionService};
 use chrono::{Local, NaiveDate};
-use clap::Subcommand;
 use domain::{Money, TransactionKind, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum ExpenseCommands {
-    /// Registra uma nova despesa ou compra parcelada
-    Add {
-        /// Nome ou ID da conta
-        #[arg(short, long)]
-        account: String,
-
-        /// Nome ou ID da categoria de despesa
-        #[arg(short, long)]
-        category: String,
-
-        /// Valor total da despesa (ex: 89,90 ou 89.90)
-        #[arg(short = 'm', long = "amount")]
-        amount: Option<String>,
-
-        /// Valor de cada parcela (alternativa ao valor total ao usar --installments)
-        #[arg(long = "installment-amount")]
-        installment_amount: Option<String>,
-
-        /// Número de parcelas (para compras parceladas, mínimo: 2)
-        #[arg(short = 'i', long = "installments")]
-        installments: Option<u32>,
-
-        /// Data da despesa / primeira parcela no formato AAAA-MM-DD (padrão: hoje)
-        #[arg(short, long)]
-        date: Option<String>,
-
-        /// Descrição do lançamento
-        #[arg(long = "desc", default_value = "")]
-        description: String,
-
-        /// Registra a despesa avulsa como prevista (pendente de realização)
-        #[arg(long)]
-        pending: bool,
-    },
-}
+pub use crate::cli::ExpenseCommands;
 
 pub async fn handle_expense_command(
     cmd: ExpenseCommands,

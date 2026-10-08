@@ -1,44 +1,11 @@
 use crate::format::OutputFormat;
 use app::{CategoryItem, CategoryService};
-use clap::Subcommand;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 use dialoguer::Confirm;
 use domain::{TransactionKind, UserId};
 use sqlx::PgPool;
 
-#[derive(Subcommand, Debug)]
-pub enum CategoryCommands {
-    /// Adiciona uma nova categoria
-    Add {
-        /// Nome da categoria (ex: "Alimentação", "Mercado")
-        name: String,
-
-        /// Tipo da categoria: income (receita) ou expense (despesa)
-        #[arg(short, long)]
-        kind: String,
-
-        /// Nome ou ID da categoria pai (opcional)
-        #[arg(short, long)]
-        parent: Option<String>,
-    },
-
-    /// Lista as categorias cadastradas
-    List {
-        /// Formato de saída (table, json, csv)
-        #[arg(short, long, default_value_t = OutputFormat::Table)]
-        format: OutputFormat,
-    },
-
-    /// Remove uma categoria (apenas se não houver lançamentos ativos vinculados)
-    Rm {
-        /// Nome ou ID da categoria a ser removida
-        category: String,
-
-        /// Pular a confirmação interativa
-        #[arg(short = 'y', long = "yes")]
-        yes: bool,
-    },
-}
+pub use crate::cli::CategoryCommands;
 
 pub async fn handle_category_command(
     cmd: CategoryCommands,

@@ -1,80 +1,11 @@
 use app::{ListTransactionsInput, TransactionService};
-use chrono::NaiveDate;
-use clap::{Args, Subcommand, ValueEnum};
-use domain::{TransactionKind, UserId};
+use domain::UserId;
 use sqlx::PgPool;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
-#[derive(Subcommand, Debug)]
-pub enum ExportCommands {
-    /// Exporta lançamentos/transações para arquivo
-    Tx(ExportTxArgs),
-}
-
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum ExportFormat {
-    #[default]
-    Csv,
-    Json,
-}
-
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum ExportLocale {
-    #[default]
-    #[value(name = "pt-BR", alias = "pt_BR", alias = "pt")]
-    PtBr,
-    #[value(name = "en-US", alias = "en_US", alias = "en")]
-    EnUs,
-}
-
-#[derive(Args, Debug)]
-pub struct ExportTxArgs {
-    /// Caminho do arquivo de saída
-    #[arg(short, long)]
-    pub output: String,
-
-    /// Formato do arquivo (csv ou json) [padrão: csv]
-    #[arg(short, long, value_enum, default_value_t = ExportFormat::Csv)]
-    pub format: ExportFormat,
-
-    /// Padrão de formatação regional (pt-BR com ';' e vírgula decimal, en-US com ',' e ponto) [padrão: pt-BR]
-    #[arg(short, long, value_enum, default_value_t = ExportLocale::PtBr)]
-    pub locale: ExportLocale,
-
-    /// Sobrescrever arquivo caso já exista
-    #[arg(long)]
-    pub force: bool,
-
-    /// Data inicial no formato AAAA-MM-DD
-    #[arg(long)]
-    pub from: Option<NaiveDate>,
-
-    /// Data final no formato AAAA-MM-DD
-    #[arg(long)]
-    pub to: Option<NaiveDate>,
-
-    /// Mês específico no formato AAAA-MM (ex: 2026-10)
-    #[arg(short, long)]
-    pub month: Option<String>,
-
-    /// Filtrar por nome ou UUID da conta
-    #[arg(short, long)]
-    pub account: Option<String>,
-
-    /// Filtrar por nome ou UUID da categoria
-    #[arg(short, long)]
-    pub category: Option<String>,
-
-    /// Filtrar por tipo (income/receita ou expense/despesa)
-    #[arg(short, long)]
-    pub kind: Option<TransactionKind>,
-
-    /// Limite máximo de registros para exportar
-    #[arg(long)]
-    pub limit: Option<i64>,
-}
+pub use crate::cli::{ExportCommands, ExportFormat, ExportLocale, ExportTxArgs};
 
 pub async fn handle_export_command(
     pool: &PgPool,
