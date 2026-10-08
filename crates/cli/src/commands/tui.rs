@@ -39,6 +39,104 @@ pub async fn handle_tui_command(
                         }
                     }
                 }
+                tui::Command::FetchTransactions(mut input) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    input.user_id = user_id;
+                    let tx_service = app::TransactionService::new(&pool_clone);
+                    match tx_service.list_transactions_paginated(input).await {
+                        Ok(paginated) => {
+                            let _ = msg_tx
+                                .send(tui::Message::TransactionsLoaded(paginated))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::PayTransactions(ids, date) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let tx_service = app::TransactionService::new(&pool_clone);
+                    match tx_service
+                        .pay_multiple_transactions(user_id, &ids, date)
+                        .await
+                    {
+                        Ok(count) => {
+                            let _ = msg_tx
+                                .send(tui::Message::TransactionActionSuccess(format!(
+                                    "{} lançamento(s) marcado(s) como pago(s)!",
+                                    count
+                                )))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::DeleteTransactions(ids) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let tx_service = app::TransactionService::new(&pool_clone);
+                    match tx_service.delete_multiple_transactions(user_id, &ids).await {
+                        Ok(count) => {
+                            let _ = msg_tx
+                                .send(tui::Message::TransactionActionSuccess(format!(
+                                    "{} lançamento(s) removido(s) com sucesso!",
+                                    count
+                                )))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::CreateTransaction(mut input) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    input.user_id = user_id;
+                    let tx_service = app::TransactionService::new(&pool_clone);
+                    match tx_service.create_transaction(input).await {
+                        Ok(tx) => {
+                            let _ = msg_tx
+                                .send(tui::Message::TransactionActionSuccess(format!(
+                                    "Lançamento '{}' criado com sucesso!",
+                                    tx.description
+                                )))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::EditTransaction(mut input) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    input.user_id = user_id;
+                    let tx_service = app::TransactionService::new(&pool_clone);
+                    match tx_service.edit_transaction(input).await {
+                        Ok(tx) => {
+                            let _ = msg_tx
+                                .send(tui::Message::TransactionActionSuccess(format!(
+                                    "Lançamento '{}' atualizado com sucesso!",
+                                    tx.description
+                                )))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
                 tui::Command::Custom(s) => {
                     let _ = msg_tx.send(tui::Message::StatusMessage(s)).await;
                 }

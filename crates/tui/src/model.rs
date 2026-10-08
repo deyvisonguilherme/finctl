@@ -1,5 +1,7 @@
-use app::DashboardData;
+use app::{DashboardData, TransactionDetails};
 use chrono::{DateTime, Local};
+use domain::{TransactionId, TransactionKind, TransactionStatus};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
@@ -71,6 +73,189 @@ impl Tab {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormMode {
+    Add,
+    Edit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormField {
+    Kind,
+    Account,
+    Category,
+    Amount,
+    Date,
+    Description,
+    Status,
+}
+
+impl FormField {
+    pub const ALL: [FormField; 7] = [
+        FormField::Kind,
+        FormField::Account,
+        FormField::Category,
+        FormField::Amount,
+        FormField::Date,
+        FormField::Description,
+        FormField::Status,
+    ];
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Kind => Self::Account,
+            Self::Account => Self::Category,
+            Self::Category => Self::Amount,
+            Self::Amount => Self::Date,
+            Self::Date => Self::Description,
+            Self::Description => Self::Status,
+            Self::Status => Self::Kind,
+        }
+    }
+
+    pub fn previous(&self) -> Self {
+        match self {
+            Self::Kind => Self::Status,
+            Self::Account => Self::Kind,
+            Self::Category => Self::Account,
+            Self::Amount => Self::Category,
+            Self::Date => Self::Amount,
+            Self::Description => Self::Date,
+            Self::Status => Self::Description,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransactionFormState {
+    pub mode: FormMode,
+    pub editing_id: Option<TransactionId>,
+    pub focused_field: FormField,
+    pub kind: TransactionKind,
+    pub account_input: String,
+    pub category_input: String,
+    pub amount_input: String,
+    pub date_input: String,
+    pub description_input: String,
+    pub status: TransactionStatus,
+    pub validation_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterField {
+    Month,
+    Account,
+    Category,
+    Kind,
+    Status,
+    Tag,
+}
+
+impl FilterField {
+    pub const ALL: [FilterField; 6] = [
+        FilterField::Month,
+        FilterField::Account,
+        FilterField::Category,
+        FilterField::Kind,
+        FilterField::Status,
+        FilterField::Tag,
+    ];
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Month => Self::Account,
+            Self::Account => Self::Category,
+            Self::Category => Self::Kind,
+            Self::Kind => Self::Status,
+            Self::Status => Self::Tag,
+            Self::Tag => Self::Month,
+        }
+    }
+
+    pub fn previous(&self) -> Self {
+        match self {
+            Self::Month => Self::Tag,
+            Self::Account => Self::Month,
+            Self::Category => Self::Account,
+            Self::Kind => Self::Category,
+            Self::Status => Self::Kind,
+            Self::Tag => Self::Status,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TransactionFilterState {
+    pub month: Option<String>,
+    pub account: Option<String>,
+    pub category: Option<String>,
+    pub kind: Option<TransactionKind>,
+    pub status: Option<TransactionStatus>,
+    pub tag: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FilterModalState {
+    pub focused_field: FilterField,
+    pub month_input: String,
+    pub account_input: String,
+    pub category_input: String,
+    pub kind_selection: Option<TransactionKind>,
+    pub status_selection: Option<TransactionStatus>,
+    pub tag_input: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteConfirmState {
+    pub target_ids: Vec<TransactionId>,
+    pub prompt_message: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransactionsTabState {
+    pub items: Vec<TransactionDetails>,
+    pub cursor_index: usize,
+    pub selected_ids: HashSet<TransactionId>,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_count: i64,
+    pub total_pages: i64,
+
+    // Busca rápida por descrição
+    pub search_query: String,
+    pub is_searching: bool,
+
+    // Filtros
+    pub active_filters: TransactionFilterState,
+    pub filter_modal: Option<FilterModalState>,
+
+    // Formulário (Adicionar / Editar)
+    pub form_modal: Option<TransactionFormState>,
+
+    // Diálogo de confirmação de exclusão
+    pub delete_confirm: Option<DeleteConfirmState>,
+}
+
+impl Default for TransactionsTabState {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            cursor_index: 0,
+            selected_ids: HashSet::new(),
+            page: 1,
+            page_size: 15,
+            total_count: 0,
+            total_pages: 1,
+            search_query: String::new(),
+            is_searching: false,
+            active_filters: TransactionFilterState::default(),
+            filter_modal: None,
+            form_modal: None,
+            delete_confirm: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub active_tab: Tab,
@@ -81,6 +266,7 @@ pub struct Model {
     pub last_tick: DateTime<Local>,
     pub data_summary: Option<String>,
     pub dashboard_data: Option<DashboardData>,
+    pub transactions_state: TransactionsTabState,
     pub error_message: Option<String>,
 }
 
@@ -101,6 +287,7 @@ impl Model {
             last_tick: Local::now(),
             data_summary: None,
             dashboard_data: None,
+            transactions_state: TransactionsTabState::default(),
             error_message: None,
         }
     }

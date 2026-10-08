@@ -1,11 +1,14 @@
-use crate::model::{Model, Tab};
+use crate::model::{
+    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model, Tab,
+    TransactionFormState,
+};
 use app::{DashboardData, UpcomingKind};
-use domain::{format_decimal_pt_br, BudgetIndicator};
+use domain::{format_decimal_pt_br, BudgetIndicator, TransactionKind, TransactionStatus};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Tabs},
+    widgets::{Block, Borders, Clear, Paragraph, Tabs},
     Frame,
 };
 use rust_decimal::prelude::ToPrimitive;
@@ -473,26 +476,518 @@ fn format_progress_bar(percentage: Decimal, width: usize) -> String {
     format!("[{}{}]", "█".repeat(filled), "░".repeat(empty))
 }
 
-fn render_transactions_tab(_model: &Model, frame: &mut Frame, area: Rect) {
+fn render_transactions_tab(model: &Model, frame: &mut Frame, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Barra de filtros / busca
+            Constraint::Min(6),    // Tabela de lançamentos
+            Constraint::Length(3), // Rodapé e paginação
+        ])
+        .split(area);
+
+    render_transactions_filter_bar(model, frame, chunks[0]);
+    render_transactions_table(model, frame, chunks[1]);
+    render_transactions_pagination(model, frame, chunks[2]);
+
+    // Modais sobrepostos
+    if let Some(ref confirm) = model.transactions_state.delete_confirm {
+        render_delete_modal(confirm, frame, area);
+    } else if let Some(ref form) = model.transactions_state.form_modal {
+        render_form_modal(form, frame, area);
+    } else if let Some(ref filter) = model.transactions_state.filter_modal {
+        render_filter_modal(filter, frame, area);
+    }
+}
+
+fn render_transactions_filter_bar(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.transactions_state;
+
+    let content = if state.is_searching {
+        Line::from(vec![
+            Span::styled(
+                "Buscar Descrição: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{}_", state.search_query),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "  [Enter] Aplicar  [Esc] Cancelar",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])
+    } else {
+        let mut spans = vec![Span::styled(
+            "Filtros Ativos: ",
+            Style::default().fg(Color::Cyan),
+        )];
+
+        let mut has_filter = false;
+        if !state.search_query.trim().is_empty() {
+            spans.push(Span::styled(
+                format!("Busca: \"{}\"  ", state.search_query.trim()),
+                Style::default().fg(Color::Yellow),
+            ));
+            has_filter = true;
+        }
+        if let Some(ref m) = state.active_filters.month {
+            spans.push(Span::raw(format!("Mês: {m}  ")));
+            has_filter = true;
+        }
+        if let Some(ref a) = state.active_filters.account {
+            spans.push(Span::raw(format!("Conta: {a}  ")));
+            has_filter = true;
+        }
+        if let Some(ref c) = state.active_filters.category {
+            spans.push(Span::raw(format!("Cat: {c}  ")));
+            has_filter = true;
+        }
+        if let Some(ref k) = state.active_filters.kind {
+            spans.push(Span::styled(
+                format!("Tipo: {}  ", k.display_pt_br()),
+                Style::default().fg(Color::Magenta),
+            ));
+            has_filter = true;
+        }
+        if let Some(ref s) = state.active_filters.status {
+            spans.push(Span::styled(
+                format!("Status: {}  ", s.display_pt_br()),
+                Style::default().fg(Color::Green),
+            ));
+            has_filter = true;
+        }
+        if let Some(ref t) = state.active_filters.tag {
+            spans.push(Span::raw(format!("Tag: #{t}  ")));
+            has_filter = true;
+        }
+
+        if !has_filter {
+            spans.push(Span::styled(
+                "Nenhum (Todos os lançamentos)  ",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+
+        spans.push(Span::styled(
+            "[/] Buscar  [f] Filtrar",
+            Style::default().fg(Color::DarkGray),
+        ));
+        Line::from(spans)
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" 2: Lançamentos e Transações ")
+        .title(" Filtros e Busca ")
+        .border_style(if state.is_searching {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::Blue)
+        });
+
+    let p = Paragraph::new(content).block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_transactions_table(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.transactions_state;
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Lançamentos (Use Setas/j/k para navegar, Space para selecionar) ")
         .border_style(Style::default().fg(Color::Magenta));
 
+    let mut lines = Vec::new();
+
+    // Cabeçalho da tabela
+    let header_line = Line::from(vec![
+        Span::styled(
+            "Sel ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Data       ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Tipo ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Conta     ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Categoria ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Descrição       ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "       Valor ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Status ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    lines.push(header_line);
+    lines.push(Line::from(
+        "────────────────────────────────────────────────────────────────────────────",
+    ));
+
+    if state.items.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Nenhum lançamento encontrado para os filtros atuais.",
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(Span::styled(
+            "  Pressione 'a' para adicionar um novo lançamento ou 'f' para ajustar os filtros.",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (i, tx) in state.items.iter().enumerate() {
+            let is_cursor = i == state.cursor_index;
+            let is_selected = state.selected_ids.contains(&tx.id);
+
+            let sel_span = if is_selected {
+                Span::styled(
+                    "[x] ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled("[ ] ", Style::default().fg(Color::DarkGray))
+            };
+
+            let date_str = format!("{} ", tx.date.format("%d/%m/%Y"));
+            let (kind_str, kind_color) = match tx.kind {
+                TransactionKind::Income => ("REC  ", Color::Green),
+                TransactionKind::Expense => ("DESP ", Color::Red),
+            };
+
+            let acc_str = if tx.account_name.chars().count() > 9 {
+                let s: String = tx.account_name.chars().take(8).collect();
+                format!("{s}… ")
+            } else {
+                format!("{:<9} ", tx.account_name)
+            };
+
+            let cat_str = if tx.category_name.chars().count() > 9 {
+                let s: String = tx.category_name.chars().take(8).collect();
+                format!("{s}… ")
+            } else {
+                format!("{:<9} ", tx.category_name)
+            };
+
+            let desc_str = if tx.description.chars().count() > 15 {
+                let s: String = tx.description.chars().take(14).collect();
+                format!("{s}… ")
+            } else {
+                format!("{:<15} ", tx.description)
+            };
+
+            let val_str = format!("{:>12} ", format_decimal_pt_br(tx.amount.as_decimal()));
+            let (status_str, status_color) = match tx.status {
+                TransactionStatus::Paid => ("[Pago] ", Color::Green),
+                TransactionStatus::Pending => ("[Pend] ", Color::Yellow),
+            };
+
+            let mut row_spans = vec![
+                sel_span,
+                Span::raw(date_str),
+                Span::styled(kind_str, Style::default().fg(kind_color)),
+                Span::raw(acc_str),
+                Span::raw(cat_str),
+                Span::raw(desc_str),
+                Span::styled(
+                    val_str,
+                    Style::default().fg(kind_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(status_str, Style::default().fg(status_color)),
+            ];
+
+            let row_style = if is_cursor {
+                Style::default()
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+
+            if is_cursor {
+                row_spans.insert(0, Span::styled("▶", Style::default().fg(Color::Cyan)));
+            } else {
+                row_spans.insert(0, Span::raw(" "));
+            }
+
+            lines.push(Line::from(row_spans).style(row_style));
+        }
+    }
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_transactions_pagination(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.transactions_state;
+
+    let info_str = format!(
+        " Página {} de {} (Total: {} lançamentos)",
+        state.page,
+        state.total_pages.max(1),
+        state.total_count
+    );
+
+    let shortcuts_str = " | [p] Pagar [a] Novo [e] Edit [d] Del [ ] Pág ";
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let line = Line::from(vec![
+        Span::styled(
+            info_str,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(shortcuts_str, Style::default().fg(Color::DarkGray)),
+    ]);
+
+    let p = Paragraph::new(line).block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_delete_modal(confirm: &DeleteConfirmState, frame: &mut Frame, area: Rect) {
+    let popup_area = centered_rect(58, 8, area);
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Confirmar Exclusão ")
+        .border_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+
     let text = vec![
+        Line::from(""),
         Line::from(Span::styled(
-            "Tabela Paginada de Lançamentos (F6-03)",
-            Style::default().add_modifier(Modifier::BOLD),
+            &confirm.prompt_message,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(
-            "A listagem interativa, filtros dinâmicos e edição serão ativados na etapa F6-03.",
-        ),
-        Line::from("Navegue de volta para o Dashboard usando a tecla '1' ou Tab."),
+        Line::from(vec![
+            Span::styled(
+                " [s] Confirmar Exclusão ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Red)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("    "),
+            Span::styled(
+                " [n / Esc] Cancelar ",
+                Style::default().fg(Color::White).bg(Color::DarkGray),
+            ),
+        ]),
     ];
 
-    let paragraph = Paragraph::new(text).block(block);
-    frame.render_widget(paragraph, area);
+    let p = Paragraph::new(text)
+        .block(block)
+        .alignment(Alignment::Center);
+    frame.render_widget(p, popup_area);
+}
+
+fn render_form_modal(form: &TransactionFormState, frame: &mut Frame, area: Rect) {
+    let popup_area = centered_rect(62, 17, area);
+    frame.render_widget(Clear, popup_area);
+
+    let title = match form.mode {
+        FormMode::Add => " Adicionar Lançamento ",
+        FormMode::Edit => " Editar Lançamento ",
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let render_field_line = |label: &str, val: &str, field: FormField| {
+        let is_focused = form.focused_field == field;
+        let label_style = if is_focused {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        let val_display = if is_focused {
+            format!("{val}_")
+        } else {
+            val.to_string()
+        };
+        let val_style = if is_focused {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        Line::from(vec![
+            Span::styled(format!("{:<14}", label), label_style),
+            Span::styled(format!("[ {:<38} ]", val_display), val_style),
+        ])
+    };
+
+    let kind_display = match form.kind {
+        TransactionKind::Expense => "Despesa (use Espaço/Setas para alternar)",
+        TransactionKind::Income => "Receita (use Espaço/Setas para alternar)",
+    };
+
+    let status_display = match form.status {
+        TransactionStatus::Paid => "Pago (use Espaço/Setas para alternar)",
+        TransactionStatus::Pending => "Pendente (use Espaço/Setas para alternar)",
+    };
+
+    let mut lines = vec![
+        render_field_line("Tipo:", kind_display, FormField::Kind),
+        render_field_line("Conta:", &form.account_input, FormField::Account),
+        render_field_line("Categoria:", &form.category_input, FormField::Category),
+        render_field_line("Valor (R$):", &form.amount_input, FormField::Amount),
+        render_field_line("Data (AAAA-MM-DD):", &form.date_input, FormField::Date),
+        render_field_line(
+            "Descrição:",
+            &form.description_input,
+            FormField::Description,
+        ),
+        render_field_line("Status:", status_display, FormField::Status),
+        Line::from(""),
+    ];
+
+    if let Some(ref err) = form.validation_error {
+        lines.push(Line::from(Span::styled(
+            format!("ERRO: {err}"),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            " [Tab] Navegar campos  [Enter] Salvar  [Esc] Cancelar ",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, popup_area);
+}
+
+fn render_filter_modal(filter: &FilterModalState, frame: &mut Frame, area: Rect) {
+    let popup_area = centered_rect(58, 15, area);
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Filtrar Lançamentos ")
+        .border_style(
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let render_filter_field = |label: &str, val: &str, field: FilterField| {
+        let is_focused = filter.focused_field == field;
+        let label_style = if is_focused {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        let val_display = if is_focused {
+            format!("{val}_")
+        } else {
+            val.to_string()
+        };
+        let val_style = if is_focused {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        Line::from(vec![
+            Span::styled(format!("{:<14}", label), label_style),
+            Span::styled(format!("[ {:<34} ]", val_display), val_style),
+        ])
+    };
+
+    let kind_display = match filter.kind_selection {
+        None => "Todos os tipos (Espaço para alterar)",
+        Some(TransactionKind::Expense) => "Apenas Despesas",
+        Some(TransactionKind::Income) => "Apenas Receitas",
+    };
+
+    let status_display = match filter.status_selection {
+        None => "Todos os status (Espaço para alterar)",
+        Some(TransactionStatus::Paid) => "Apenas Pagos",
+        Some(TransactionStatus::Pending) => "Apenas Pendentes",
+    };
+
+    let lines = vec![
+        render_filter_field("Mês (AAAA-MM):", &filter.month_input, FilterField::Month),
+        render_filter_field("Conta:", &filter.account_input, FilterField::Account),
+        render_filter_field("Categoria:", &filter.category_input, FilterField::Category),
+        render_filter_field("Tipo:", kind_display, FilterField::Kind),
+        render_filter_field("Status:", status_display, FilterField::Status),
+        render_filter_field("Tag (#nome):", &filter.tag_input, FilterField::Tag),
+        Line::from(""),
+        Line::from(Span::styled(
+            " [Tab] Navegar  [Enter] Aplicar Filtros  [Esc] Cancelar ",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, popup_area);
+}
+
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let popup_width = width.min(area.width.saturating_sub(2));
+    let popup_height = height.min(area.height.saturating_sub(2));
+    let x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(popup_height)) / 2;
+    Rect::new(x, y, popup_width, popup_height)
 }
 
 fn render_reports_tab(_model: &Model, frame: &mut Frame, area: Rect) {

@@ -1,10 +1,13 @@
 use app::{
     AccountBalance, BalanceReport, CategoryBudgetStatus, DashboardData, MonthlySummary,
-    UpcomingDueItem, UpcomingKind,
+    PaginatedTransactions, TransactionDetails, UpcomingDueItem, UpcomingKind,
 };
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use domain::{AccountId, AccountKind, BudgetIndicator, CategoryId, Money};
+use domain::{
+    AccountId, AccountKind, BudgetIndicator, CategoryId, Money, TransactionId, TransactionKind,
+    TransactionStatus, UserId,
+};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use rust_decimal_macros::dec;
@@ -231,7 +234,7 @@ fn test_update_lifecycle_and_5_tab_navigation() {
 
     // Navegação com Tab (Next) por todas as 5 abas
     let cmd = update(&mut model, Message::NextTab);
-    assert_eq!(cmd, None);
+    assert!(matches!(cmd, Some(Command::FetchTransactions(_))));
     assert_eq!(model.active_tab, Tab::Transactions);
 
     let _ = update(&mut model, Message::NextTab);
@@ -326,4 +329,319 @@ fn test_panic_hook_and_restore_terminal_callable() {
     install_panic_hook();
     let res = restore_terminal();
     assert!(res.is_ok());
+}
+
+fn sample_transaction(
+    desc: &str,
+    amount: domain::Money,
+    kind: TransactionKind,
+    status: TransactionStatus,
+) -> TransactionDetails {
+    TransactionDetails {
+        id: TransactionId::generate(),
+        user_id: UserId::generate(),
+        account_id: AccountId::generate(),
+        account_name: "Nubank".to_string(),
+        category_id: CategoryId::generate(),
+        category_name: "Alimentação".to_string(),
+        kind,
+        amount,
+        date: NaiveDate::from_ymd_opt(2026, 10, 15).unwrap(),
+        description: desc.to_string(),
+        status,
+        transfer_id: None,
+        installment_group_id: None,
+        installment_number: None,
+        installment_total: None,
+        recurring_rule_id: None,
+        import_hash: None,
+        reconciled_at: None,
+        tags: vec!["teste".to_string()],
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        deleted_at: None,
+    }
+}
+
+#[test]
+fn test_transactions_table_rendering_and_pagination() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+
+    let tx1 = sample_transaction(
+        "Supermercado",
+        Money::from_decimal_non_negative(dec!(150.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Paid,
+    );
+    let tx2 = sample_transaction(
+        "Salário Mensal",
+        Money::from_decimal_non_negative(dec!(3500.00)).unwrap(),
+        TransactionKind::Income,
+        TransactionStatus::Paid,
+    );
+    let tx3 = sample_transaction(
+        "Conta de Luz",
+        Money::from_decimal_non_negative(dec!(120.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Pending,
+    );
+
+    let paginated = PaginatedTransactions {
+        items: vec![tx1, tx2, tx3],
+        total_count: 45,
+        page: 1,
+        page_size: 15,
+        total_pages: 3,
+    };
+
+    update(&mut model, Message::TransactionsLoaded(paginated));
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+
+    // 1. Validar colunas e dados renderizados
+    assert!(text.contains("Lançamentos"));
+    assert!(text.contains("Supermercado"));
+    assert!(text.contains("Salário Mensal"));
+    assert!(text.contains("Conta de Luz"));
+    assert!(text.contains("150,00"));
+    assert!(text.contains("3.500,00"));
+    assert!(text.contains("[Pago]"));
+    assert!(text.contains("[Pend]"));
+
+    // 2. Validar indicador de paginação
+    assert!(text.contains("Página 1 de 3 (Total: 45 lançamentos)"));
+
+    // 3. Testar navegação para próxima página com tecla ']'
+    let next_page_event = KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(next_page_event));
+    assert!(matches!(cmd, Some(Command::FetchTransactions(_))));
+    assert_eq!(model.transactions_state.page, 2);
+
+    // 4. Testar navegação para página anterior com tecla '['
+    let prev_page_event = KeyEvent::new(KeyCode::Char('['), KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(prev_page_event));
+    assert!(matches!(cmd, Some(Command::FetchTransactions(_))));
+    assert_eq!(model.transactions_state.page, 1);
+}
+
+#[test]
+fn test_transactions_multi_selection_and_pay_flow() {
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+
+    let tx1 = sample_transaction(
+        "Internet",
+        Money::from_decimal_non_negative(dec!(100.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Pending,
+    );
+    let tx2 = sample_transaction(
+        "Celular",
+        Money::from_decimal_non_negative(dec!(50.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Pending,
+    );
+
+    let id1 = tx1.id;
+    let id2 = tx2.id;
+
+    let paginated = PaginatedTransactions {
+        items: vec![tx1, tx2],
+        total_count: 2,
+        page: 1,
+        page_size: 15,
+        total_pages: 1,
+    };
+    update(&mut model, Message::TransactionsLoaded(paginated));
+
+    // Selecionar primeiro item com Space
+    let space_event = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(space_event));
+    assert!(model.transactions_state.selected_ids.contains(&id1));
+
+    // Descer cursor e selecionar segundo item
+    let down_event = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(down_event));
+    assert_eq!(model.transactions_state.cursor_index, 1);
+
+    let space_event_2 = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(space_event_2));
+    assert!(model.transactions_state.selected_ids.contains(&id2));
+    assert_eq!(model.transactions_state.selected_ids.len(), 2);
+
+    // Pressionar tecla 'p' para pagar os itens selecionados
+    let pay_event = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(pay_event));
+
+    match cmd {
+        Some(Command::PayTransactions(ids, date)) => {
+            assert_eq!(ids.len(), 2);
+            assert!(ids.contains(&id1));
+            assert!(ids.contains(&id2));
+            assert_eq!(date, None);
+        }
+        other => panic!("Esperado Command::PayTransactions, obteve: {:?}", other),
+    }
+}
+
+#[test]
+fn test_transactions_form_modal_add_and_validation() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+
+    // 1. Pressionar 'a' para abrir formulário de criação
+    let a_event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(a_event));
+    assert!(model.transactions_state.form_modal.is_some());
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Adicionar Lançamento"));
+
+    // 2. Tentar salvar vazio (Enter) -> deve dar erro de validação (Conta vazia)
+    let enter_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(enter_event));
+    assert_eq!(cmd, None);
+    assert!(model
+        .transactions_state
+        .form_modal
+        .as_ref()
+        .unwrap()
+        .validation_error
+        .is_some());
+
+    // 3. Preencher dados válidos
+    if let Some(form) = model.transactions_state.form_modal.as_mut() {
+        form.account_input = "Nubank".to_string();
+        form.category_input = "Mercado".to_string();
+        form.amount_input = "150.00".to_string();
+        form.date_input = "2026-10-15".to_string();
+        form.description_input = "Compras Semanais".to_string();
+    }
+
+    // 4. Salvar com Enter -> deve gerar Command::CreateTransaction
+    let cmd_save = update(&mut model, Message::Key(enter_event));
+    match cmd_save {
+        Some(Command::CreateTransaction(input)) => {
+            assert_eq!(input.account_query, "Nubank");
+            assert_eq!(input.category_query, "Mercado");
+            assert_eq!(input.description, "Compras Semanais");
+            assert_eq!(
+                input.amount,
+                Money::from_decimal_non_negative(dec!(150.00)).unwrap()
+            );
+        }
+        other => panic!("Esperado Command::CreateTransaction, obteve: {:?}", other),
+    }
+
+    // 5. Esc cancela e fecha o modal
+    let _ = update(&mut model, Message::Key(a_event));
+    assert!(model.transactions_state.form_modal.is_some());
+    let esc_event = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(esc_event));
+    assert!(model.transactions_state.form_modal.is_none());
+}
+
+#[test]
+fn test_transactions_search_and_filters_flow() {
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+
+    // 1. Pressionar '/' para ativar busca
+    let slash_event = KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(slash_event));
+    assert!(model.transactions_state.is_searching);
+
+    // 2. Digitar termo "aluguel"
+    for ch in "aluguel".chars() {
+        let char_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
+        let _ = update(&mut model, Message::Key(char_event));
+    }
+    assert_eq!(model.transactions_state.search_query, "aluguel");
+
+    // 3. Enter confirma a busca e dispara FetchTransactions
+    let enter_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(enter_event));
+    match cmd {
+        Some(Command::FetchTransactions(input)) => {
+            assert_eq!(input.search_description.as_deref(), Some("aluguel"));
+        }
+        other => panic!("Esperado FetchTransactions com busca, obteve: {:?}", other),
+    }
+    assert!(!model.transactions_state.is_searching);
+
+    // 4. Pressionar 'f' para abrir modal de filtros
+    let f_event = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(f_event));
+    assert!(model.transactions_state.filter_modal.is_some());
+
+    // Preencher filtro de mês
+    if let Some(modal) = model.transactions_state.filter_modal.as_mut() {
+        modal.month_input = "2026-10".to_string();
+    }
+    let cmd_filter = update(&mut model, Message::Key(enter_event));
+    match cmd_filter {
+        Some(Command::FetchTransactions(input)) => {
+            assert_eq!(input.month.as_deref(), Some("2026-10"));
+        }
+        other => panic!(
+            "Esperado FetchTransactions com filtro de mês, obteve: {:?}",
+            other
+        ),
+    }
+    assert!(model.transactions_state.filter_modal.is_none());
+}
+
+#[test]
+fn test_transactions_delete_confirmation_modal() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+
+    let tx = sample_transaction(
+        "Gasto Cancelado",
+        Money::from_decimal_non_negative(dec!(99.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Paid,
+    );
+    let id = tx.id;
+    let paginated = PaginatedTransactions {
+        items: vec![tx],
+        total_count: 1,
+        page: 1,
+        page_size: 15,
+        total_pages: 1,
+    };
+    update(&mut model, Message::TransactionsLoaded(paginated));
+
+    // 1. Pressionar 'd' abre modal de confirmação
+    let d_event = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(d_event));
+    assert!(model.transactions_state.delete_confirm.is_some());
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Confirmar Exclusão"));
+    assert!(text.contains("Gasto Cancelado"));
+
+    // 2. Pressionar 's' confirma a exclusão
+    let s_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(s_event));
+    match cmd {
+        Some(Command::DeleteTransactions(ids)) => {
+            assert_eq!(ids, vec![id]);
+        }
+        other => panic!("Esperado Command::DeleteTransactions, obteve: {:?}", other),
+    }
+    assert!(model.transactions_state.delete_confirm.is_none());
 }

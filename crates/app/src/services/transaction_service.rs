@@ -13,6 +13,7 @@ use storage::{
 };
 use uuid::Uuid;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateTransactionInput {
     pub user_id: UserId,
     pub account_query: String,
@@ -24,7 +25,7 @@ pub struct CreateTransactionInput {
     pub status: Option<TransactionStatus>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListTransactionsInput {
     pub user_id: UserId,
     pub from_date: Option<NaiveDate>,
@@ -37,10 +38,21 @@ pub struct ListTransactionsInput {
     pub installment_group_id: Option<Uuid>,
     pub tag: Option<String>,
     pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub search_description: Option<String>,
     pub deleted: Option<bool>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PaginatedTransactions {
+    pub items: Vec<TransactionDetails>,
+    pub total_count: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_pages: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EditTransactionInput {
     pub user_id: UserId,
     pub id: TransactionId,
@@ -184,10 +196,10 @@ impl<'a> TransactionService<'a> {
         Ok(tx)
     }
 
-    pub async fn list_transactions(
+    async fn build_filter(
         &self,
-        input: ListTransactionsInput,
-    ) -> Result<Vec<TransactionDetails>, AppError> {
+        input: &ListTransactionsInput,
+    ) -> Result<TransactionFilter, AppError> {
         let account_id = if let Some(ref acc_q) = input.account_query {
             let acc = AccountRepository::find_by_id_or_name(self.pool, input.user_id, acc_q)
                 .await?
@@ -242,15 +254,19 @@ impl<'a> TransactionService<'a> {
         } else if input.installment_group_id.is_some() || input.deleted == Some(true) {
             (input.from_date, input.to_date)
         } else if input.from_date.is_none() && input.to_date.is_none() {
-            // Padrão sem filtros de data: últimos 30 dias
-            let today = Local::now().date_naive();
-            let thirty_days_ago = today.checked_sub_days(Days::new(30)).unwrap_or(today);
-            (Some(thirty_days_ago), Some(today))
+            // Padrão sem filtros de data: últimos 30 dias se busca não estiver ativa
+            if input.search_description.is_some() {
+                (None, None)
+            } else {
+                let today = Local::now().date_naive();
+                let thirty_days_ago = today.checked_sub_days(Days::new(30)).unwrap_or(today);
+                (Some(thirty_days_ago), Some(today))
+            }
         } else {
             (input.from_date, input.to_date)
         };
 
-        let filter = TransactionFilter {
+        Ok(TransactionFilter {
             user_id: input.user_id,
             from_date,
             to_date,
@@ -259,14 +275,90 @@ impl<'a> TransactionService<'a> {
             kind: input.kind,
             status: input.status,
             installment_group_id: input.installment_group_id,
-            tag: input.tag,
+            tag: input.tag.clone(),
             limit: input.limit,
+            offset: input.offset,
+            description_query: input.search_description.clone(),
             deleted: input.deleted,
             ..Default::default()
-        };
+        })
+    }
 
+    pub async fn list_transactions(
+        &self,
+        input: ListTransactionsInput,
+    ) -> Result<Vec<TransactionDetails>, AppError> {
+        let filter = self.build_filter(&input).await?;
         let transactions = TransactionRepository::list_with_details(self.pool, filter).await?;
         Ok(transactions)
+    }
+
+    pub async fn count_transactions(&self, input: ListTransactionsInput) -> Result<i64, AppError> {
+        let filter = self.build_filter(&input).await?;
+        let count = TransactionRepository::count_with_details(self.pool, filter).await?;
+        Ok(count)
+    }
+
+    pub async fn list_transactions_paginated(
+        &self,
+        input: ListTransactionsInput,
+    ) -> Result<PaginatedTransactions, AppError> {
+        let page_size = input.limit.unwrap_or(15).max(1);
+        let offset = input.offset.unwrap_or(0).max(0);
+        let current_page = (offset / page_size) + 1;
+
+        let mut count_input = input.clone();
+        count_input.limit = None;
+        count_input.offset = None;
+        let count_filter = self.build_filter(&count_input).await?;
+        let total_count =
+            TransactionRepository::count_with_details(self.pool, count_filter).await?;
+
+        let mut list_filter = self.build_filter(&input).await?;
+        list_filter.limit = Some(page_size);
+        list_filter.offset = Some(offset);
+        let items = TransactionRepository::list_with_details(self.pool, list_filter).await?;
+
+        let total_pages = if total_count == 0 {
+            1
+        } else {
+            (total_count + page_size - 1) / page_size
+        };
+
+        Ok(PaginatedTransactions {
+            items,
+            total_count,
+            page: current_page,
+            page_size,
+            total_pages,
+        })
+    }
+
+    pub async fn pay_multiple_transactions(
+        &self,
+        user_id: UserId,
+        tx_ids: &[TransactionId],
+        payment_date: Option<NaiveDate>,
+    ) -> Result<usize, AppError> {
+        let mut count = 0;
+        for &id in tx_ids {
+            self.pay_transaction(user_id, id, payment_date).await?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    pub async fn delete_multiple_transactions(
+        &self,
+        user_id: UserId,
+        tx_ids: &[TransactionId],
+    ) -> Result<usize, AppError> {
+        let mut count = 0;
+        for &id in tx_ids {
+            self.delete_transaction(user_id, id).await?;
+            count += 1;
+        }
+        Ok(count)
     }
 
     pub async fn create_installments(

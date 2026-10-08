@@ -33,14 +33,14 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Funciona em terminal de 80×24
 - **Notas:** Implementado Dashboard na TUI com Grid 2x2 responsivo para terminal 80x24: Quadrante 1 (Saldos por Conta e totalizador geral), Quadrante 2 (Resumo do mês corrente com receitas, despesas, saldo líquido e poupança), Quadrante 3 (Status dos orçamentos com barras de progresso coloridas por nível de alerta) e Quadrante 4 (Próximos vencimentos incluindo despesas/receitas pendentes e faturas de cartão de crédito não pagas com indicador de atraso). Criado o serviço `DashboardService` em `app` agregando `BalanceService`, `ReportService`, `BudgetService` e repositórios sem acoplar a TUI ao banco. Navegação expandida para 5 abas (`1: Dashboard`, `2: Lançamentos`, `3: Relatórios`, `4: Orçamentos`, `5: Metas`) com atalhos `Tab`, `BackTab` e teclas `1-5`. Estados de carregamento e erros de conexão tratados visualmente sem fechar a aplicação, com recarga via tecla `r`. Suíte de testes com `TestBackend` cobrindo 80x24, estados de loading/erro e navegação, além de teste de integração no storage garantindo equivalência exata dos dados com os comandos CLI.
 
-### [ ] F6-03 — Tela de lançamentos
+### [x] F6-03 — Tela de lançamentos
 - **Depende de:** F6-02
 - **Escopo:** tabela paginada com filtros (período, conta, categoria, tipo, status, tag), busca por descrição, e formulário para adicionar, editar, remover (com confirmação) e marcar como pago, reutilizando os casos de uso de `app`.
 - **Critérios de aceite:**
   - Mesmas validações da CLI (valor, categoria compatível, datas)
   - Seleção múltipla para marcar vários como pagos
   - Lista de 100 mil lançamentos navega sem travar (paginação no banco)
-- **Notas:**
+- **Notas:** Implementada tela completa de lançamentos na TUI com paginação eficiente no nível do PostgreSQL (`LIMIT`/`OFFSET` combinados com `COUNT` indexado) garantindo navegação instantânea em bases volumosas (>100k registros). A tabela apresenta cursor visual (`▶`), indicador de seleção (`[x]`), colunas formatadas (Data, Tipo, Conta, Categoria, Descrição, Valor em formato pt-BR e Status) ajustadas com precisão para caber em terminais 80×24 sem quebra de linha. Implementada barra superior de busca rápida (`/`) por descrição com debounce e indicador de filtros ativos (`f`), com modal interativo de filtros por mês (`AAAA-MM`), conta, categoria, tipo, status e tag. Implementados modais modais sobrepostos com `Clear` e estilização contextual para Criação/Edição (`a`/`e`/`Enter`) reutilizando `TransactionService` (com validações de valor positivo, categorias compatíveis e datas válidas), exclusão com diálogo de confirmação (`d`/`Enter`) e pagamento individual (`p`) ou em lote via seleção múltipla com barra de espaço (`Space`). Implementados comandos assíncronos no loop Elm desacoplados de I/O na TUI. Cobertura completa com 12 testes unitários/TUI com `TestBackend` e novo teste de integração PostgreSQL (`transaction_pagination_test.rs`) validando paginação, busca `ILIKE` e ações em lote.
 
 ### [ ] F6-04 — Tela de relatórios
 - **Depende de:** F6-02

@@ -1,4 +1,4 @@
-use app::DashboardData;
+use app::{DashboardData, PaginatedTransactions};
 use crossterm::event::KeyEvent;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,5 +14,7 @@ pub enum Message {
     SetLoading(bool),
     DataLoaded(String),
     DashboardLoaded(Box<DashboardData>),
+    TransactionsLoaded(PaginatedTransactions),
+    TransactionActionSuccess(String),
     ErrorOccurred(String),
 }

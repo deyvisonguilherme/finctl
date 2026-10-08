@@ -44,10 +44,11 @@ pub use report_service::{
     parse_month_bounds, CategoryReportInput, CompareCategoriesInput, CompareReportInput,
     MonthlyReportInput, ReportService,
 };
+pub use storage::TransactionDetails;
 pub use tag_service::{DeleteTagSummary, TagService};
 pub use transaction_service::{
     CreateInstallmentsInput, CreateInstallmentsSummary, CreateTransactionInput,
     DeleteInstallmentGroupSummary, EditInstallmentGroupInput, EditInstallmentGroupSummary,
-    EditTransactionInput, ListTransactionsInput, TransactionService,
+    EditTransactionInput, ListTransactionsInput, PaginatedTransactions, TransactionService,
 };
 pub use transfer_service::{CreateTransferInput, CreateTransferSummary, TransferService};
