@@ -42,7 +42,7 @@ pub use recurring_service::{
 };
 pub use report_service::{
     parse_month_bounds, CategoryReportInput, CompareCategoriesInput, CompareReportInput,
-    MonthlyReportInput, ReportService,
+    MonthlyReportInput, ReportService, ReportsScreenData,
 };
 pub use storage::TransactionDetails;
 pub use tag_service::{DeleteTagSummary, TagService};

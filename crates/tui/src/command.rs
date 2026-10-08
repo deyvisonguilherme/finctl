@@ -11,5 +11,9 @@ pub enum Command {
     DeleteTransactions(Vec<TransactionId>),
     CreateTransaction(CreateTransactionInput),
     EditTransaction(EditTransactionInput),
+    FetchReportData {
+        month: String,
+        include_pending: bool,
+    },
     Custom(String),
 }

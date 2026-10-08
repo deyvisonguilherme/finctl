@@ -1,6 +1,6 @@
 use crate::model::{
-    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model, Tab,
-    TransactionFormState,
+    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model,
+    PeriodModalState, ReportSubView, Tab, TransactionFormState,
 };
 use app::{DashboardData, UpcomingKind};
 use domain::{format_decimal_pt_br, BudgetIndicator, TransactionKind, TransactionStatus};
@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Tabs},
+    widgets::{Block, Borders, Clear, Paragraph, Sparkline, Tabs},
     Frame,
 };
 use rust_decimal::prelude::ToPrimitive;
@@ -990,24 +990,736 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     Rect::new(x, y, popup_width, popup_height)
 }
 
-fn render_reports_tab(_model: &Model, frame: &mut Frame, area: Rect) {
+fn render_reports_tab(model: &Model, frame: &mut Frame, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Barra de controle de sub-visões e filtros
+            Constraint::Min(6),    // Conteúdo da sub-visão ativa
+        ])
+        .split(area);
+
+    render_reports_control_bar(model, frame, chunks[0]);
+
+    match model.reports_state.active_subview {
+        ReportSubView::Categories => render_reports_categories_view(model, frame, chunks[1]),
+        ReportSubView::MonthlyEvolution => render_reports_evolution_view(model, frame, chunks[1]),
+        ReportSubView::Comparison => render_reports_comparison_view(model, frame, chunks[1]),
+    }
+
+    if let Some(ref modal) = model.reports_state.period_modal {
+        render_reports_period_modal(modal, frame, area);
+    }
+}
+
+fn render_reports_control_bar(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.reports_state;
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" 3: Relatórios e Gráficos ")
-        .border_style(Style::default().fg(Color::Green));
+        .title(" Relatórios Financeiros ")
+        .border_style(Style::default().fg(Color::Blue));
 
-    let text = vec![
-        Line::from(Span::styled(
-            "Gráficos e Indicadores Financeiros (F6-04)",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from("Visualização de gastos por categoria e evolução mensal na etapa F6-04."),
-        Line::from("Navegue de volta para o Dashboard usando a tecla '1' ou Tab."),
+    let subview_spans = [
+        Span::styled(
+            "[1] Categorias  ",
+            if state.active_subview == ReportSubView::Categories {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            },
+        ),
+        Span::styled(
+            "[2] Evolução Mensal  ",
+            if state.active_subview == ReportSubView::MonthlyEvolution {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            },
+        ),
+        Span::styled(
+            "[3] Comparativo",
+            if state.active_subview == ReportSubView::Comparison {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            },
+        ),
     ];
 
-    let paragraph = Paragraph::new(text).block(block);
-    frame.render_widget(paragraph, area);
+    let pending_status = if state.include_pending {
+        Span::styled(
+            " [Previstos: ON] ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        Span::styled(" [Previstos: OFF] ", Style::default().fg(Color::DarkGray))
+    };
+
+    let controls = Line::from(vec![
+        Span::styled(
+            "Sub-visões: ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        subview_spans[0].clone(),
+        subview_spans[1].clone(),
+        subview_spans[2].clone(),
+        Span::raw(" | "),
+        Span::styled(
+            format!("◄ {} ►", state.reference_month),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        pending_status,
+        Span::styled(
+            "[ [ / ] ] Mês [i] Previstos [p] Período",
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]);
+
+    let p = Paragraph::new(controls).block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_reports_categories_view(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.reports_state;
+    let total_str = state
+        .data
+        .as_ref()
+        .map(|d| format_decimal_pt_br(d.category_report.total_amount.as_decimal()))
+        .unwrap_or_else(|| "R$ 0,00".to_string());
+
+    let title = format!(
+        " Gastos por Categoria — {} (Total: {}) ",
+        state.reference_month, total_str
+    );
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(Color::Magenta));
+
+    let Some(data) = &state.data else {
+        let p = Paragraph::new(Line::from(Span::styled(
+            " Carregando dados ou pressione 'r' para atualizar...",
+            Style::default().fg(Color::DarkGray),
+        )))
+        .block(block);
+        frame.render_widget(p, area);
+        return;
+    };
+
+    let items = &data.category_report.items;
+    if items.is_empty() {
+        let p = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Nenhum gasto registrado para as categorias neste período.",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .block(block);
+        frame.render_widget(p, area);
+        return;
+    }
+
+    let mut lines = Vec::new();
+    // Cabeçalho da tabela: Sel(2) + Cat(16) + Pct(7) + Valor(13) + Barra(36) = 74 caracteres <= 78!
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            "Categoria       ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "      % ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "        Valor ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Distribuição",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(
+        "────────────────────────────────────────────────────────────────────────────",
+    ));
+
+    // Janela de exibição com rolagem
+    let visible_rows = (area.height.saturating_sub(4)).max(1) as usize;
+    let cursor = state.category_cursor.min(items.len().saturating_sub(1));
+    let start_idx = if cursor >= visible_rows {
+        cursor - visible_rows + 1
+    } else {
+        0
+    };
+
+    for (i, item) in items.iter().enumerate().skip(start_idx).take(visible_rows) {
+        let is_cursor = i == cursor;
+        let prefix = if is_cursor { "▶ " } else { "  " };
+
+        let name = if item.category_name.chars().count() > 15 {
+            let truncated: String = item.category_name.chars().take(14).collect();
+            format!("{truncated}…")
+        } else {
+            format!("{:<15}", item.category_name)
+        };
+
+        let pct = item.percentage.to_f64().unwrap_or(0.0);
+        let pct_str = format!("{:>6.1}% ", pct).replace('.', ",");
+        let val_str = format!(
+            "{:>12} ",
+            format_decimal_pt_br(item.total_amount.as_decimal())
+        );
+
+        // Barra de progresso com 33 caracteres
+        let bar_width = 33;
+        let filled = ((pct / 100.0) * bar_width as f64).round() as usize;
+        let filled = filled.min(bar_width);
+        let empty = bar_width.saturating_sub(filled);
+        let bar_str = format!("[{}{}]", "█".repeat(filled), "░".repeat(empty));
+
+        let row_style = if is_cursor {
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        let row_spans = vec![
+            Span::styled(prefix, Style::default().fg(Color::Cyan)),
+            Span::raw(format!("{name} ")),
+            Span::styled(pct_str, Style::default().fg(Color::Yellow)),
+            Span::styled(
+                val_str,
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(bar_str, Style::default().fg(Color::Green)),
+        ];
+
+        lines.push(Line::from(row_spans).style(row_style));
+    }
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_reports_evolution_view(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.reports_state;
+    let Some(data) = &state.data else {
+        let p = Paragraph::new(Line::from(Span::styled(
+            " Carregando dados de evolução...",
+            Style::default().fg(Color::DarkGray),
+        )))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Evolução Mensal "),
+        );
+        frame.render_widget(p, area);
+        return;
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Sparklines duplas (altura 3)
+            Constraint::Min(9),    // Tabela resumo mês a mês (altura 9)
+        ])
+        .split(area);
+
+    // Painel superior: Sparklines
+    let spark_cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[0]);
+
+    // Extrair dados numéricos para sparklines (em inteiros positivos)
+    let income_data: Vec<u64> = data
+        .monthly_history
+        .iter()
+        .map(|m| {
+            m.total_income
+                .as_decimal()
+                .to_f64()
+                .unwrap_or(0.0)
+                .max(0.0)
+                .round() as u64
+        })
+        .collect();
+
+    let expense_data: Vec<u64> = data
+        .monthly_history
+        .iter()
+        .map(|m| {
+            m.total_expense
+                .as_decimal()
+                .to_f64()
+                .unwrap_or(0.0)
+                .max(0.0)
+                .round() as u64
+        })
+        .collect();
+
+    let income_sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Receitas (Últimos 6 Meses) ")
+                .border_style(Style::default().fg(Color::Green)),
+        )
+        .data(&income_data)
+        .style(Style::default().fg(Color::Green));
+
+    let expense_sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Despesas (Últimos 6 Meses) ")
+                .border_style(Style::default().fg(Color::Red)),
+        )
+        .data(&expense_data)
+        .style(Style::default().fg(Color::Red));
+
+    frame.render_widget(income_sparkline, spark_cols[0]);
+    frame.render_widget(expense_sparkline, spark_cols[1]);
+
+    // Painel inferior: Tabela detalhada mês a mês
+    let table_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Histórico Mês a Mês ")
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let mut table_lines = Vec::new();
+    table_lines.push(Line::from(vec![
+        Span::styled(
+            " Mês       ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "       Receitas ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "       Despesas ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "    Saldo Líquido ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "    Poupança",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    for item in &data.monthly_history {
+        let is_current = item.month == state.reference_month;
+        let prefix = if is_current { "► " } else { "  " };
+
+        let m_str = format!("{prefix}{:<7} ", item.month);
+        let inc_str = format!(
+            "{:>14} ",
+            format_decimal_pt_br(item.total_income.as_decimal())
+        );
+        let exp_str = format!(
+            "{:>14} ",
+            format_decimal_pt_br(item.total_expense.as_decimal())
+        );
+
+        let net_prefix = if item.net_balance >= Decimal::ZERO {
+            "+"
+        } else {
+            ""
+        };
+        let net_str = format!(
+            "{:>15} ",
+            format!("{net_prefix}{}", format_decimal_pt_br(item.net_balance))
+        );
+        let net_color = if item.net_balance >= Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+
+        let sav_str =
+            format!("{:>11.1}%", item.savings_rate.to_f64().unwrap_or(0.0)).replace('.', ",");
+
+        let row_style = if is_current {
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        table_lines.push(
+            Line::from(vec![
+                Span::styled(
+                    m_str,
+                    Style::default().fg(if is_current {
+                        Color::Yellow
+                    } else {
+                        Color::White
+                    }),
+                ),
+                Span::styled(inc_str, Style::default().fg(Color::Green)),
+                Span::styled(exp_str, Style::default().fg(Color::Red)),
+                Span::styled(
+                    net_str,
+                    Style::default().fg(net_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(sav_str, Style::default().fg(Color::Cyan)),
+            ])
+            .style(row_style),
+        );
+    }
+
+    let p_table = Paragraph::new(table_lines).block(table_block);
+    frame.render_widget(p_table, chunks[1]);
+}
+
+fn render_reports_comparison_view(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.reports_state;
+    let Some(data) = &state.data else {
+        let p = Paragraph::new(Line::from(Span::styled(
+            " Carregando dados comparativos...",
+            Style::default().fg(Color::DarkGray),
+        )))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Comparativo "),
+        );
+        frame.render_widget(p, area);
+        return;
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5), // Resumo dos Totais (Receitas, Despesas, Saldo)
+            Constraint::Min(6),    // Tabela por Categorias de Despesa
+        ])
+        .split(area);
+
+    // 1. Resumo dos Totais
+    let totals_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Comparativo dos Totais Gerais ")
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let mut tot_lines = Vec::new();
+    if data.comparison_totals.len() >= 2 {
+        let prev = &data.comparison_totals[0];
+        let curr = &data.comparison_totals[1];
+
+        let inc_diff = curr.total_income.as_decimal() - prev.total_income.as_decimal();
+        let exp_diff = curr.total_expense.as_decimal() - prev.total_expense.as_decimal();
+        let net_diff = curr.net_balance - prev.net_balance;
+
+        let inc_sign = if inc_diff >= Decimal::ZERO { "+" } else { "" };
+        let exp_sign = if exp_diff >= Decimal::ZERO { "+" } else { "" };
+        let net_sign = if net_diff >= Decimal::ZERO { "+" } else { "" };
+
+        tot_lines.push(Line::from(vec![
+            Span::styled(
+                "Receitas: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "{} (Ant.) vs {} (Atual)  ",
+                format_decimal_pt_br(prev.total_income.as_decimal()),
+                format_decimal_pt_br(curr.total_income.as_decimal())
+            )),
+            Span::styled(
+                format!("Delta: {inc_sign}{}", format_decimal_pt_br(inc_diff)),
+                Style::default().fg(if inc_diff >= Decimal::ZERO {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
+        ]));
+
+        tot_lines.push(Line::from(vec![
+            Span::styled(
+                "Despesas: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "{} (Ant.) vs {} (Atual)  ",
+                format_decimal_pt_br(prev.total_expense.as_decimal()),
+                format_decimal_pt_br(curr.total_expense.as_decimal())
+            )),
+            Span::styled(
+                format!("Delta: {exp_sign}{}", format_decimal_pt_br(exp_diff)),
+                Style::default().fg(if exp_diff <= Decimal::ZERO {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
+        ]));
+
+        tot_lines.push(Line::from(vec![
+            Span::styled(
+                "Saldo:    ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "{} (Ant.) vs {} (Atual)  ",
+                format_decimal_pt_br(prev.net_balance),
+                format_decimal_pt_br(curr.net_balance)
+            )),
+            Span::styled(
+                format!("Delta: {net_sign}{}", format_decimal_pt_br(net_diff)),
+                Style::default().fg(if net_diff >= Decimal::ZERO {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
+        ]));
+    } else {
+        tot_lines.push(Line::from(Span::styled(
+            "Dados insuficientes para comparação de totais de 2 meses.",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    let p_tot = Paragraph::new(tot_lines).block(totals_block);
+    frame.render_widget(p_tot, chunks[0]);
+
+    // 2. Tabela de Categorias
+    let cat_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Variação de Despesas por Categoria ")
+        .border_style(Style::default().fg(Color::Magenta));
+
+    let rows = &data.comparison_categories.rows;
+    let mut cat_lines = Vec::new();
+
+    cat_lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            "Categoria       ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "      Mês Ant. ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "     Mês Atual ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "      Variação R$ ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "    Var. %",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    cat_lines.push(Line::from(
+        "────────────────────────────────────────────────────────────────────────────",
+    ));
+
+    if rows.is_empty() {
+        cat_lines.push(Line::from(Span::styled(
+            "  Nenhuma despesa para comparar entre os períodos selecionados.",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        let visible_rows = (chunks[1].height.saturating_sub(4)).max(1) as usize;
+        let cursor = state.comparison_cursor.min(rows.len().saturating_sub(1));
+        let start_idx = if cursor >= visible_rows {
+            cursor - visible_rows + 1
+        } else {
+            0
+        };
+
+        for (i, row) in rows.iter().enumerate().skip(start_idx).take(visible_rows) {
+            let is_cursor = i == cursor;
+            let prefix = if is_cursor { "▶ " } else { "  " };
+
+            let name = if row.category_name.chars().count() > 15 {
+                let truncated: String = row.category_name.chars().take(14).collect();
+                format!("{truncated}…")
+            } else {
+                format!("{:<15}", row.category_name)
+            };
+
+            let val_ant = row
+                .monthly_amounts
+                .first()
+                .map(|(_, m)| format_decimal_pt_br(m.as_decimal()))
+                .unwrap_or_else(|| "0,00".to_string());
+            let val_curr = row
+                .monthly_amounts
+                .get(1)
+                .map(|(_, m)| format_decimal_pt_br(m.as_decimal()))
+                .unwrap_or_else(|| "0,00".to_string());
+
+            let diff_sign = if row.absolute_diff >= Decimal::ZERO {
+                "+"
+            } else {
+                ""
+            };
+            let diff_str = format!(
+                "{:>16} ",
+                format!("{diff_sign}{}", format_decimal_pt_br(row.absolute_diff))
+            );
+            let diff_color = if row.absolute_diff <= Decimal::ZERO {
+                Color::Green // Despesa diminuiu: economia!
+            } else {
+                Color::Red // Despesa aumentou: alerta!
+            };
+
+            let pct_str = if let Some(pct) = row.percent_diff {
+                let sign = if pct >= Decimal::ZERO { "+" } else { "" };
+                let s = format!("{sign}{:.1}%", pct).replace('.', ",");
+                format!("{:>9}", s)
+            } else {
+                format!("{:>9}", "N/A")
+            };
+
+            let row_style = if is_cursor {
+                Style::default()
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+
+            cat_lines.push(
+                Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(Color::Cyan)),
+                    Span::raw(format!("{name} ")),
+                    Span::styled(
+                        format!("{:>14} ", val_ant),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(
+                        format!("{:>14} ", val_curr),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(
+                        diff_str,
+                        Style::default().fg(diff_color).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(pct_str, Style::default().fg(diff_color)),
+                ])
+                .style(row_style),
+            );
+        }
+    }
+
+    let p_cat = Paragraph::new(cat_lines).block(cat_block);
+    frame.render_widget(p_cat, chunks[1]);
+}
+
+fn render_reports_period_modal(modal: &PeriodModalState, frame: &mut Frame, area: Rect) {
+    let popup_width = 46.min(area.width.saturating_sub(4));
+    let popup_height = 8.min(area.height.saturating_sub(4));
+    let x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(popup_height)) / 2;
+    let popup_area = Rect::new(x, y, popup_width, popup_height);
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Selecionar Período ")
+        .border_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                " Mês de Referência (AAAA-MM): ",
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::styled(
+                format!("{}_", modal.input_month),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+    ];
+
+    if let Some(ref err) = modal.validation_error {
+        lines.push(Line::from(Span::styled(
+            format!(" {err}"),
+            Style::default().fg(Color::Red),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            " [Enter] Confirmar  [Esc] Cancelar",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, popup_area);
 }
 
 fn render_budgets_tab(_model: &Model, frame: &mut Frame, area: Rect) {

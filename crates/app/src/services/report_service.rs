@@ -1,13 +1,26 @@
 use crate::errors::AppError;
 use chrono::{Datelike, Local, NaiveDate};
 use domain::{
-    CategoryComparisonReport, CategoryReportSummary, MonthlyReportItem, TransactionKind, UserId,
+    CategoryComparisonReport, CategoryReportSummary, Money, MonthlyReportItem, TransactionKind,
+    UserId,
 };
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use storage::{
     AccountRepository, CategoryCompareFilter, CategoryReportFilter, MonthlyReportFilter,
     ReportRepository,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReportsScreenData {
+    pub reference_month: String,
+    pub include_pending: bool,
+    pub category_report: CategoryReportSummary,
+    pub monthly_history: Vec<MonthlyReportItem>,
+    pub comparison_categories: CategoryComparisonReport,
+    pub comparison_totals: Vec<MonthlyReportItem>,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct MonthlyReportInput {
@@ -309,6 +322,110 @@ impl<'a> ReportService<'a> {
 
         let report = ReportRepository::category_comparison(self.pool, filter).await?;
         Ok(report)
+    }
+
+    pub async fn get_reports_screen_data(
+        &self,
+        user_id: UserId,
+        reference_month: &str,
+        include_pending: bool,
+    ) -> Result<ReportsScreenData, AppError> {
+        let (ref_start, ref_end) = parse_month_bounds(reference_month)?;
+        let ref_year = ref_start.year();
+        let ref_month = ref_start.month();
+
+        // 1. Gastos por categoria para o mês de referência
+        let category_report = self
+            .category_report(CategoryReportInput {
+                user_id,
+                month: Some(reference_month.to_string()),
+                from_date: None,
+                to_date: None,
+                account_query: None,
+                kind: Some(TransactionKind::Expense),
+                depth: 1,
+                include_pending,
+                tag: None,
+            })
+            .await?;
+
+        // 2. Histórico dos últimos 6 meses para Sparklines e tabela de evolução
+        let mut last_6_months = Vec::new();
+        let total_m = ref_year * 12 + (ref_month as i32 - 1);
+        for offset in (0..6).rev() {
+            let m_val = total_m - offset;
+            let y = m_val / 12;
+            let m = (m_val % 12 + 1) as u32;
+            last_6_months.push(format!("{:04}-{:02}", y, m));
+        }
+
+        let earliest_month = &last_6_months[0];
+        let (earliest_start, _) = parse_month_bounds(earliest_month)?;
+
+        let history_filter = MonthlyReportFilter {
+            user_id,
+            from_date: Some(earliest_start),
+            to_date: Some(ref_end),
+            account_id: None,
+            include_pending,
+        };
+        let queried_history = ReportRepository::monthly_summary(self.pool, history_filter).await?;
+
+        let monthly_history: Vec<MonthlyReportItem> = last_6_months
+            .iter()
+            .map(|m_str| {
+                if let Some(item) = queried_history.iter().find(|h| &h.month == m_str) {
+                    item.clone()
+                } else {
+                    MonthlyReportItem {
+                        month: m_str.clone(),
+                        total_income: Money::ZERO,
+                        total_expense: Money::ZERO,
+                        net_balance: Decimal::ZERO,
+                        savings_rate: Decimal::ZERO,
+                    }
+                }
+            })
+            .collect();
+
+        // 3. Mês anterior para Comparativo
+        let prev_month = if ref_month == 1 {
+            format!("{:04}-12", ref_year - 1)
+        } else {
+            format!("{:04}-{:02}", ref_year, ref_month - 1)
+        };
+
+        // 4. Comparativo por categorias (Mês Anterior vs Mês de Referência)
+        let comparison_categories = self
+            .compare_categories(CompareCategoriesInput {
+                user_id,
+                months: Some(vec![prev_month.clone(), reference_month.to_string()]),
+                last_n: None,
+                kind: Some(TransactionKind::Expense),
+                account_query: None,
+                include_pending,
+            })
+            .await?;
+
+        // 5. Comparativo de totais (Receitas, Despesas, Saldo) entre os dois meses
+        let comparison_totals = self
+            .compare_report(CompareReportInput {
+                user_id,
+                months: Some(vec![prev_month, reference_month.to_string()]),
+                last_n: None,
+                account_query: None,
+                include_pending,
+            })
+            .await?;
+
+        Ok(ReportsScreenData {
+            reference_month: reference_month.to_string(),
+            include_pending,
+            category_report,
+            monthly_history,
+            comparison_categories,
+            comparison_totals,
+        })
     }
 }
 

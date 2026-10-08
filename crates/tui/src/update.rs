@@ -1,8 +1,8 @@
 use crate::command::Command;
 use crate::message::Message;
 use crate::model::{
-    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model, Tab,
-    TransactionFilterState, TransactionFormState,
+    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model,
+    PeriodModalState, ReportSubView, Tab, TransactionFilterState, TransactionFormState,
 };
 use app::ListTransactionsInput;
 use chrono::{Local, NaiveDate};
@@ -21,26 +21,26 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
         Message::Key(key) => handle_key_event(model, key),
         Message::NextTab => {
             model.active_tab = model.active_tab.next();
-            if model.active_tab == Tab::Transactions {
-                Some(build_fetch_transactions_command(model))
-            } else {
-                None
+            match model.active_tab {
+                Tab::Transactions => Some(build_fetch_transactions_command(model)),
+                Tab::Reports => Some(build_fetch_reports_command(model)),
+                _ => None,
             }
         }
         Message::PreviousTab => {
             model.active_tab = model.active_tab.previous();
-            if model.active_tab == Tab::Transactions {
-                Some(build_fetch_transactions_command(model))
-            } else {
-                None
+            match model.active_tab {
+                Tab::Transactions => Some(build_fetch_transactions_command(model)),
+                Tab::Reports => Some(build_fetch_reports_command(model)),
+                _ => None,
             }
         }
         Message::SelectTab(idx) => {
             model.active_tab = Tab::from_index(idx);
-            if model.active_tab == Tab::Transactions {
-                Some(build_fetch_transactions_command(model))
-            } else {
-                None
+            match model.active_tab {
+                Tab::Transactions => Some(build_fetch_transactions_command(model)),
+                Tab::Reports => Some(build_fetch_reports_command(model)),
+                _ => None,
             }
         }
         Message::Tick => {
@@ -108,6 +108,16 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
             model.transactions_state.filter_modal = None;
             // Recarregar os dados da página atual
             Some(build_fetch_transactions_command(model))
+        }
+        Message::ReportDataLoaded(data) => {
+            model.is_loading = false;
+            model.error_message = None;
+            model.status_message = format!(
+                "Relatórios de {} atualizados com sucesso",
+                data.reference_month
+            );
+            model.reports_state.data = Some(*data);
+            None
         }
         Message::ErrorOccurred(err) => {
             model.is_loading = false;
@@ -316,6 +326,112 @@ fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
         }
     }
 
+    // Se estivermos na aba de Relatórios
+    if model.active_tab == Tab::Reports {
+        if model.reports_state.period_modal.is_some() {
+            return handle_period_modal_key(model, key);
+        }
+
+        match key.code {
+            KeyCode::Char('1') => {
+                model.reports_state.active_subview = ReportSubView::Categories;
+                return None;
+            }
+            KeyCode::Char('2') => {
+                model.reports_state.active_subview = ReportSubView::MonthlyEvolution;
+                return None;
+            }
+            KeyCode::Char('3') => {
+                model.reports_state.active_subview = ReportSubView::Comparison;
+                return None;
+            }
+            KeyCode::Char('v') | KeyCode::Char('V') => {
+                model.reports_state.active_subview = match model.reports_state.active_subview {
+                    ReportSubView::Categories => ReportSubView::MonthlyEvolution,
+                    ReportSubView::MonthlyEvolution => ReportSubView::Comparison,
+                    ReportSubView::Comparison => ReportSubView::Categories,
+                };
+                return None;
+            }
+            KeyCode::Char('[') | KeyCode::PageUp => {
+                if let Some(prev) = adjust_month_string(&model.reports_state.reference_month, -1) {
+                    model.reports_state.reference_month = prev;
+                    model.reports_state.category_cursor = 0;
+                    model.reports_state.comparison_cursor = 0;
+                    model.is_loading = true;
+                    return Some(build_fetch_reports_command(model));
+                }
+                return None;
+            }
+            KeyCode::Char(']') | KeyCode::PageDown => {
+                if let Some(next) = adjust_month_string(&model.reports_state.reference_month, 1) {
+                    model.reports_state.reference_month = next;
+                    model.reports_state.category_cursor = 0;
+                    model.reports_state.comparison_cursor = 0;
+                    model.is_loading = true;
+                    return Some(build_fetch_reports_command(model));
+                }
+                return None;
+            }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                model.reports_state.include_pending = !model.reports_state.include_pending;
+                model.is_loading = true;
+                return Some(build_fetch_reports_command(model));
+            }
+            KeyCode::Char('p') | KeyCode::Char('P') => {
+                model.reports_state.period_modal = Some(PeriodModalState {
+                    input_month: model.reports_state.reference_month.clone(),
+                    validation_error: None,
+                });
+                return None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                match model.reports_state.active_subview {
+                    ReportSubView::Categories if model.reports_state.category_cursor > 0 => {
+                        model.reports_state.category_cursor -= 1;
+                    }
+                    ReportSubView::Comparison if model.reports_state.comparison_cursor > 0 => {
+                        model.reports_state.comparison_cursor -= 1;
+                    }
+                    _ => {}
+                }
+                return None;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                match model.reports_state.active_subview {
+                    ReportSubView::Categories => {
+                        let total_items = model
+                            .reports_state
+                            .data
+                            .as_ref()
+                            .map(|d| d.category_report.items.len())
+                            .unwrap_or(0);
+                        if total_items > 0 && model.reports_state.category_cursor < total_items - 1
+                        {
+                            model.reports_state.category_cursor += 1;
+                        }
+                    }
+                    ReportSubView::Comparison => {
+                        let total_items = model
+                            .reports_state
+                            .data
+                            .as_ref()
+                            .map(|d| d.comparison_categories.rows.len())
+                            .unwrap_or(0);
+                        if total_items > 0
+                            && model.reports_state.comparison_cursor < total_items - 1
+                        {
+                            model.reports_state.comparison_cursor += 1;
+                        }
+                    }
+                    _ => {}
+                }
+                return None;
+            }
+            _ => {}
+        }
+    }
+
     // Teclas globais de navegação e atalhos
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => update(model, Message::Quit),
@@ -332,6 +448,8 @@ fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
             model.status_message = "Atualizando dados...".to_string();
             if model.active_tab == Tab::Transactions {
                 Some(build_fetch_transactions_command(model))
+            } else if model.active_tab == Tab::Reports {
+                Some(build_fetch_reports_command(model))
             } else {
                 Some(Command::RefreshData)
             }
@@ -657,4 +775,63 @@ pub fn build_fetch_transactions_command(model: &Model) -> Command {
         ..Default::default()
     };
     Command::FetchTransactions(input)
+}
+
+fn handle_period_modal_key(model: &mut Model, key: KeyEvent) -> Option<Command> {
+    let modal = model.reports_state.period_modal.as_mut()?;
+    match key.code {
+        KeyCode::Esc => {
+            model.reports_state.period_modal = None;
+            None
+        }
+        KeyCode::Enter => {
+            let input = modal.input_month.trim().to_string();
+            match app::parse_month_bounds(&input) {
+                Ok(_) => {
+                    model.reports_state.reference_month = input;
+                    model.reports_state.period_modal = None;
+                    model.reports_state.category_cursor = 0;
+                    model.reports_state.comparison_cursor = 0;
+                    model.is_loading = true;
+                    Some(build_fetch_reports_command(model))
+                }
+                Err(_) => {
+                    modal.validation_error =
+                        Some("Formato inválido. Use AAAA-MM (ex: 2026-10)".to_string());
+                    None
+                }
+            }
+        }
+        KeyCode::Backspace => {
+            modal.input_month.pop();
+            None
+        }
+        KeyCode::Char(c) => {
+            if modal.input_month.len() < 7 {
+                modal.input_month.push(c);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+pub fn build_fetch_reports_command(model: &Model) -> Command {
+    Command::FetchReportData {
+        month: model.reports_state.reference_month.clone(),
+        include_pending: model.reports_state.include_pending,
+    }
+}
+
+pub fn adjust_month_string(month_str: &str, delta: i32) -> Option<String> {
+    let parts: Vec<&str> = month_str.split('-').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let year: i32 = parts[0].parse().ok()?;
+    let month: u32 = parts[1].parse().ok()?;
+    let total_m = year * 12 + (month as i32 - 1) + delta;
+    let new_year = total_m / 12;
+    let new_month = (total_m % 12 + 1) as u32;
+    Some(format!("{:04}-{:02}", new_year, new_month))
 }

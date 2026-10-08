@@ -1,18 +1,20 @@
 use app::{
     AccountBalance, BalanceReport, CategoryBudgetStatus, DashboardData, MonthlySummary,
-    PaginatedTransactions, TransactionDetails, UpcomingDueItem, UpcomingKind,
+    PaginatedTransactions, ReportsScreenData, TransactionDetails, UpcomingDueItem, UpcomingKind,
 };
 use chrono::{NaiveDate, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use domain::{
-    AccountId, AccountKind, BudgetIndicator, CategoryId, Money, TransactionId, TransactionKind,
-    TransactionStatus, UserId,
+    AccountId, AccountKind, BudgetIndicator, CategoryComparisonReport, CategoryComparisonRow,
+    CategoryId, CategoryReportItem, CategoryReportSummary, Money, MonthlyReportItem, TransactionId,
+    TransactionKind, TransactionStatus, UserId,
 };
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use rust_decimal_macros::dec;
 use tui::{
-    install_panic_hook, restore_terminal, run_tui, update, view, Command, Message, Model, Tab,
+    install_panic_hook, restore_terminal, run_tui, update, view, Command, Message, Model,
+    ReportSubView, Tab,
 };
 
 fn buffer_to_string(terminal: &Terminal<TestBackend>) -> String {
@@ -644,4 +646,350 @@ fn test_transactions_delete_confirmation_modal() {
         other => panic!("Esperado Command::DeleteTransactions, obteve: {:?}", other),
     }
     assert!(model.transactions_state.delete_confirm.is_none());
+}
+
+fn sample_reports_data() -> ReportsScreenData {
+    let cat_item1 = CategoryReportItem {
+        category_id: CategoryId::generate(),
+        category_name: "Alimentação e Supermercados Longo".to_string(),
+        parent_id: None,
+        parent_name: None,
+        kind: TransactionKind::Expense,
+        total_amount: Money::from_decimal_non_negative(dec!(1500.00)).unwrap(),
+        transaction_count: 10,
+        percentage: dec!(60.0),
+    };
+    let cat_item2 = CategoryReportItem {
+        category_id: CategoryId::generate(),
+        category_name: "Transporte".to_string(),
+        parent_id: None,
+        parent_name: None,
+        kind: TransactionKind::Expense,
+        total_amount: Money::from_decimal_non_negative(dec!(1000.00)).unwrap(),
+        transaction_count: 5,
+        percentage: dec!(40.0),
+    };
+
+    let category_report = CategoryReportSummary {
+        kind: Some(TransactionKind::Expense),
+        total_amount: Money::from_decimal_non_negative(dec!(2500.00)).unwrap(),
+        items: vec![cat_item1, cat_item2],
+    };
+
+    let monthly_history = vec![
+        MonthlyReportItem {
+            month: "2026-05".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(5000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(3000.00)).unwrap(),
+            net_balance: dec!(2000.00),
+            savings_rate: dec!(40.0),
+        },
+        MonthlyReportItem {
+            month: "2026-06".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(5200.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(3100.00)).unwrap(),
+            net_balance: dec!(2100.00),
+            savings_rate: dec!(40.4),
+        },
+        MonthlyReportItem {
+            month: "2026-07".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(5000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(3500.00)).unwrap(),
+            net_balance: dec!(1500.00),
+            savings_rate: dec!(30.0),
+        },
+        MonthlyReportItem {
+            month: "2026-08".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(5500.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(3200.00)).unwrap(),
+            net_balance: dec!(2300.00),
+            savings_rate: dec!(41.8),
+        },
+        MonthlyReportItem {
+            month: "2026-09".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(5000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(2800.00)).unwrap(),
+            net_balance: dec!(2200.00),
+            savings_rate: dec!(44.0),
+        },
+        MonthlyReportItem {
+            month: "2026-10".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(6000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(2500.00)).unwrap(),
+            net_balance: dec!(3500.00),
+            savings_rate: dec!(58.3),
+        },
+    ];
+
+    let comp_row1 = CategoryComparisonRow {
+        category_name: "Alimentação".to_string(),
+        kind: TransactionKind::Expense,
+        monthly_amounts: vec![
+            (
+                "2026-09".to_string(),
+                Money::from_decimal_non_negative(dec!(1200.00)).unwrap(),
+            ),
+            (
+                "2026-10".to_string(),
+                Money::from_decimal_non_negative(dec!(1500.00)).unwrap(),
+            ),
+        ],
+        absolute_diff: dec!(300.00),
+        percent_diff: Some(dec!(25.0)),
+    };
+    let comp_row2 = CategoryComparisonRow {
+        category_name: "Transporte".to_string(),
+        kind: TransactionKind::Expense,
+        monthly_amounts: vec![
+            (
+                "2026-09".to_string(),
+                Money::from_decimal_non_negative(dec!(1200.00)).unwrap(),
+            ),
+            (
+                "2026-10".to_string(),
+                Money::from_decimal_non_negative(dec!(1000.00)).unwrap(),
+            ),
+        ],
+        absolute_diff: dec!(-200.00),
+        percent_diff: Some(dec!(-16.7)),
+    };
+
+    let comparison_categories = CategoryComparisonReport {
+        months: vec!["2026-09".to_string(), "2026-10".to_string()],
+        rows: vec![comp_row1, comp_row2],
+    };
+
+    let comparison_totals = vec![
+        MonthlyReportItem {
+            month: "2026-09".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(5000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(2800.00)).unwrap(),
+            net_balance: dec!(2200.00),
+            savings_rate: dec!(44.0),
+        },
+        MonthlyReportItem {
+            month: "2026-10".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(6000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(2500.00)).unwrap(),
+            net_balance: dec!(3500.00),
+            savings_rate: dec!(58.3),
+        },
+    ];
+
+    ReportsScreenData {
+        reference_month: "2026-10".to_string(),
+        include_pending: false,
+        category_report,
+        monthly_history,
+        comparison_categories,
+        comparison_totals,
+    }
+}
+
+#[test]
+fn test_reports_categories_view_rendering_and_truncation() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut model = Model::new();
+    model.active_tab = Tab::Reports;
+    model.reports_state.active_subview = ReportSubView::Categories;
+    model.reports_state.reference_month = "2026-10".to_string();
+
+    let data = sample_reports_data();
+    update(&mut model, Message::ReportDataLoaded(Box::new(data)));
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+
+    // 1. Validar barra de controle e título
+    assert!(text.contains("Relatórios Financeiros"));
+    assert!(text.contains("[1] Categorias"));
+    assert!(text.contains("◄ 2026-10 ►"));
+
+    // 2. Validar cabeçalho e dados de categorias
+    assert!(text.contains("Gastos por Categoria — 2026-10"));
+    assert!(text.contains("Total: R$ 2.500,00"));
+
+    // 3. Validar truncamento da categoria longa com '…'
+    assert!(text.contains("Alimentação e …"));
+    assert!(text.contains("Transporte"));
+
+    // 4. Validar percentual, valores em pt-BR e barra de distribuição
+    assert!(text.contains("60,0%"));
+    assert!(text.contains("1.500,00"));
+    assert!(text.contains("40,0%"));
+    assert!(text.contains("1.000,00"));
+    assert!(text.contains("█"));
+    assert!(text.contains("░"));
+}
+
+#[test]
+fn test_reports_evolution_view_sparkline_and_table() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut model = Model::new();
+    model.active_tab = Tab::Reports;
+    let data = sample_reports_data();
+    update(&mut model, Message::ReportDataLoaded(Box::new(data)));
+
+    // Alternar para sub-visão 2: Evolução Mensal via tecla '2'
+    let event_2 = KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(event_2));
+    assert_eq!(cmd, None);
+    assert_eq!(
+        model.reports_state.active_subview,
+        ReportSubView::MonthlyEvolution
+    );
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+
+    // Validar painéis de Sparklines
+    assert!(text.contains("Evolução Mensal"));
+    assert!(text.contains("Receitas (Últimos 6 Meses)"));
+    assert!(text.contains("Despesas (Últimos 6 Meses)"));
+
+    // Validar tabela resumo detalhada mês a mês
+    assert!(text.contains("Histórico Mês a Mês"));
+    assert!(text.contains("2026-05"));
+    assert!(text.contains("2026-10"));
+    assert!(text.contains("6.000,00"));
+    assert!(text.contains("2.500,00"));
+    assert!(text.contains("+R$ 3.500,00"));
+    assert!(text.contains("58,3%"));
+}
+
+#[test]
+fn test_reports_comparison_view_and_deltas() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut model = Model::new();
+    model.active_tab = Tab::Reports;
+    let data = sample_reports_data();
+    update(&mut model, Message::ReportDataLoaded(Box::new(data)));
+
+    // Alternar para sub-visão 3: Comparativo via tecla '3'
+    let event_3 = KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE);
+    let cmd = update(&mut model, Message::Key(event_3));
+    assert_eq!(cmd, None);
+    assert_eq!(
+        model.reports_state.active_subview,
+        ReportSubView::Comparison
+    );
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+
+    // Validar resumo dos totais gerais
+    assert!(text.contains("Comparativo"));
+    assert!(text.contains("Comparativo dos Totais Gerais"));
+    assert!(text.contains("Receitas:"));
+    assert!(text.contains("Despesas:"));
+    assert!(text.contains("Saldo:"));
+
+    // Validar tabela de categorias com deltas nominais e percentuais
+    assert!(text.contains("Variação de Despesas por Categoria"));
+    assert!(text.contains("Alimentação"));
+    assert!(text.contains("+R$ 300,00"));
+    assert!(text.contains("+25,0%"));
+    assert!(text.contains("Transporte"));
+    assert!(text.contains("-R$ 200,00"));
+    assert!(text.contains("-16,7%"));
+}
+
+#[test]
+fn test_reports_navigation_month_and_pending_toggle_and_period_modal() {
+    let mut model = Model::new();
+    model.active_tab = Tab::Reports;
+    model.reports_state.reference_month = "2026-10".to_string();
+    model.reports_state.include_pending = false;
+
+    // 1. Tecla '[' retrocede o mês para 2026-09
+    let prev_month_event = KeyEvent::new(KeyCode::Char('['), KeyModifiers::NONE);
+    let cmd_prev = update(&mut model, Message::Key(prev_month_event));
+    match cmd_prev {
+        Some(Command::FetchReportData {
+            month,
+            include_pending,
+        }) => {
+            assert_eq!(month, "2026-09");
+            assert!(!include_pending);
+        }
+        other => panic!("Esperado FetchReportData, obteve: {:?}", other),
+    }
+    assert_eq!(model.reports_state.reference_month, "2026-09");
+
+    // 2. Tecla ']' avança o mês de volta para 2026-10
+    let next_month_event = KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE);
+    let cmd_next = update(&mut model, Message::Key(next_month_event));
+    match cmd_next {
+        Some(Command::FetchReportData {
+            month,
+            include_pending,
+        }) => {
+            assert_eq!(month, "2026-10");
+            assert!(!include_pending);
+        }
+        other => panic!("Esperado FetchReportData, obteve: {:?}", other),
+    }
+    assert_eq!(model.reports_state.reference_month, "2026-10");
+
+    // 3. Tecla 'i' alterna a inclusão de previstos (toggle ON/OFF)
+    let toggle_pending_event = KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE);
+    let cmd_toggle = update(&mut model, Message::Key(toggle_pending_event));
+    match cmd_toggle {
+        Some(Command::FetchReportData {
+            month,
+            include_pending,
+        }) => {
+            assert_eq!(month, "2026-10");
+            assert!(include_pending);
+        }
+        other => panic!(
+            "Esperado FetchReportData com pending=true, obteve: {:?}",
+            other
+        ),
+    }
+    assert!(model.reports_state.include_pending);
+
+    // 4. Tecla 'p' abre o modal de período
+    let p_event = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE);
+    let _ = update(&mut model, Message::Key(p_event));
+    assert!(model.reports_state.period_modal.is_some());
+
+    // Digitar entrada inválida e tentar submeter com Enter
+    if let Some(modal) = model.reports_state.period_modal.as_mut() {
+        modal.input_month = "invalido".to_string();
+    }
+    let enter_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    let cmd_invalid = update(&mut model, Message::Key(enter_event));
+    assert_eq!(cmd_invalid, None);
+    assert!(model
+        .reports_state
+        .period_modal
+        .as_ref()
+        .unwrap()
+        .validation_error
+        .is_some());
+
+    // Digitar mês válido "2026-03" e confirmar
+    if let Some(modal) = model.reports_state.period_modal.as_mut() {
+        modal.input_month = "2026-03".to_string();
+    }
+    let cmd_valid = update(&mut model, Message::Key(enter_event));
+    match cmd_valid {
+        Some(Command::FetchReportData {
+            month,
+            include_pending,
+        }) => {
+            assert_eq!(month, "2026-03");
+            assert!(include_pending);
+        }
+        other => panic!("Esperado FetchReportData 2026-03, obteve: {:?}", other),
+    }
+    assert!(model.reports_state.period_modal.is_none());
+    assert_eq!(model.reports_state.reference_month, "2026-03");
 }

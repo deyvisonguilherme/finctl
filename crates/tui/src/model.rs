@@ -1,5 +1,5 @@
-use app::{DashboardData, TransactionDetails};
-use chrono::{DateTime, Local};
+use app::{DashboardData, ReportsScreenData, TransactionDetails};
+use chrono::{DateTime, Datelike, Local};
 use domain::{TransactionId, TransactionKind, TransactionStatus};
 use std::collections::HashSet;
 
@@ -256,6 +256,63 @@ impl Default for TransactionsTabState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReportSubView {
+    #[default]
+    Categories, // [1] Gastos por Categoria
+    MonthlyEvolution, // [2] Evolução Mensal (Sparklines + tabela)
+    Comparison,       // [3] Comparativo entre Meses
+}
+
+impl ReportSubView {
+    pub const ALL: [ReportSubView; 3] = [
+        ReportSubView::Categories,
+        ReportSubView::MonthlyEvolution,
+        ReportSubView::Comparison,
+    ];
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            ReportSubView::Categories => "1: Categorias",
+            ReportSubView::MonthlyEvolution => "2: Evolução Mensal",
+            ReportSubView::Comparison => "3: Comparativo",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeriodModalState {
+    pub input_month: String, // e.g. "2026-10"
+    pub validation_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReportsTabState {
+    pub active_subview: ReportSubView,
+    pub reference_month: String, // "YYYY-MM"
+    pub include_pending: bool,
+    pub category_cursor: usize,
+    pub comparison_cursor: usize,
+    pub period_modal: Option<PeriodModalState>,
+    pub data: Option<ReportsScreenData>,
+}
+
+impl Default for ReportsTabState {
+    fn default() -> Self {
+        let today = Local::now().date_naive();
+        let reference_month = format!("{:04}-{:02}", today.year(), today.month());
+        Self {
+            active_subview: ReportSubView::Categories,
+            reference_month,
+            include_pending: false,
+            category_cursor: 0,
+            comparison_cursor: 0,
+            period_modal: None,
+            data: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub active_tab: Tab,
@@ -267,6 +324,7 @@ pub struct Model {
     pub data_summary: Option<String>,
     pub dashboard_data: Option<DashboardData>,
     pub transactions_state: TransactionsTabState,
+    pub reports_state: ReportsTabState,
     pub error_message: Option<String>,
 }
 
@@ -288,6 +346,7 @@ impl Model {
             data_summary: None,
             dashboard_data: None,
             transactions_state: TransactionsTabState::default(),
+            reports_state: ReportsTabState::default(),
             error_message: None,
         }
     }

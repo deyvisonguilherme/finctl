@@ -137,6 +137,28 @@ pub async fn handle_tui_command(
                         }
                     }
                 }
+                tui::Command::FetchReportData {
+                    month,
+                    include_pending,
+                } => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let report_service = app::ReportService::new(&pool_clone);
+                    match report_service
+                        .get_reports_screen_data(user_id, &month, include_pending)
+                        .await
+                    {
+                        Ok(data) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ReportDataLoaded(Box::new(data)))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
                 tui::Command::Custom(s) => {
                     let _ = msg_tx.send(tui::Message::StatusMessage(s)).await;
                 }

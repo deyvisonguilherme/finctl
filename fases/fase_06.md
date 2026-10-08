@@ -42,13 +42,22 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Lista de 100 mil lançamentos navega sem travar (paginação no banco)
 - **Notas:** Implementada tela completa de lançamentos na TUI com paginação eficiente no nível do PostgreSQL (`LIMIT`/`OFFSET` combinados com `COUNT` indexado) garantindo navegação instantânea em bases volumosas (>100k registros). A tabela apresenta cursor visual (`▶`), indicador de seleção (`[x]`), colunas formatadas (Data, Tipo, Conta, Categoria, Descrição, Valor em formato pt-BR e Status) ajustadas com precisão para caber em terminais 80×24 sem quebra de linha. Implementada barra superior de busca rápida (`/`) por descrição com debounce e indicador de filtros ativos (`f`), com modal interativo de filtros por mês (`AAAA-MM`), conta, categoria, tipo, status e tag. Implementados modais modais sobrepostos com `Clear` e estilização contextual para Criação/Edição (`a`/`e`/`Enter`) reutilizando `TransactionService` (com validações de valor positivo, categorias compatíveis e datas válidas), exclusão com diálogo de confirmação (`d`/`Enter`) e pagamento individual (`p`) ou em lote via seleção múltipla com barra de espaço (`Space`). Implementados comandos assíncronos no loop Elm desacoplados de I/O na TUI. Cobertura completa com 12 testes unitários/TUI com `TestBackend` e novo teste de integração PostgreSQL (`transaction_pagination_test.rs`) validando paginação, busca `ILIKE` e ações em lote.
 
-### [ ] F6-04 — Tela de relatórios
+### [x] F6-04 — Tela de relatórios
 - **Depende de:** F6-02
 - **Escopo:** gráfico de barras de gastos por categoria, `Sparkline`/linha de evolução mensal de receitas e despesas e comparativo entre meses, com seletor de período e alternância entre competência e incluir previstos.
 - **Critérios de aceite:**
   - Dados idênticos aos comandos `report` equivalentes
   - Legendas legíveis em 80 colunas; categorias longas são truncadas com `…`
 - **Notas:**
+  - Implementado `ReportsScreenData` e serviço agregador `ReportService::get_reports_screen_data(user_id, reference_month, include_pending)` consolidando resumo por categoria, evolução histórica de 6 meses (preenchendo meses sem lançamentos com zero) e comparativo com o mês anterior com cálculo de deltas em R$ e %.
+  - Integração assíncrona na TUI via `Command::FetchReportData` e `Message::ReportDataLoaded` garantindo reatividade sem bloquear o loop de eventos.
+  - Tela de relatórios na aba 3 da TUI com três subvisões intercambiáveis via atalhos numéricos (`1`, `2`, `3`) ou `v`:
+    - `[1] Categorias`: gráfico de distribuição horizontal com barras proporcionais em caracteres Unicode (`█░`), valores monetários e percentuais em formato pt-BR (`R$ 1.234,56`, `60,0%`), rolagem via `j`/`k` e truncamento seguro de nomes longos com elipse (`…`) adaptado a terminais 80×24.
+    - `[2] Evolução Mensal`: gráficos `Sparkline` nativos do Ratatui com histórico de receitas (verde) e despesas (vermelho), combinados com tabela de resumo mês a mês detalhando taxa de economia e saldo.
+    - `[3] Comparativo`: tabela comparativa detalhada entre o mês de referência e o mês anterior, com deltas absolutos e percentuais coloridos (verde/vermelho), e bloco de sumário de receitas, despesas e saldo líquido.
+    - Seletor de período rápido por mês com `[` (mês anterior) e `]` (próximo mês), alternância de lançamentos previstos com `i` (`[Previstos: ON/OFF]`), e modal de inserção de período customizado `AAAA-MM` com validação de entrada via tecla `p`.
+  - Testes unitários de renderização/interação (`tui_test.rs`) e teste de integração com PostgreSQL real (`reports_screen_service_test.rs`) cobrindo consistência com os relatórios do backend.
+
 
 ### [ ] F6-05 — Ajuda, atalhos e testes de interface
 - **Depende de:** F6-03, F6-04
