@@ -91,7 +91,7 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
 
 ## Trilha B — Metas de economia e projeção de fluxo de caixa
 
-### [ ] F6-06 — Metas de economia
+### [x] F6-06 — Metas de economia
 - **Depende de:** G-02
 - **Escopo:** migrations `goals` (nome, valor alvo, data alvo opcional, conta vinculada opcional) e `goal_contributions` (meta, valor, data, nota). Comandos `goal add|list|show|contribute|edit|rm`. Progresso conforme D-07: saldo da conta vinculada ou soma dos aportes. `goal show` exibe percentual, valor que falta, aporte mensal necessário até a data alvo e data estimada de conclusão com base na média de aportes dos últimos 3 meses.
 - **Critérios de aceite:**
@@ -99,7 +99,7 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Meta atingida é marcada como concluída e some do `goal list` padrão (visível com `--all`)
   - Média de aportes sem histórico suficiente mostra `n/d`, sem erro
   - Testes cobrem meta vinculada a conta e meta com aportes manuais
-- **Notas:**
+- **Notas:** Implementada migration `20261001040000_create_goals.sql` com tabelas `goals` e `goal_contributions`, triggers de auditoria para `audit_log`, soft delete (`deleted_at`) e índices de unicidade parcial ativa por usuário. Domínio implementado com suporte a `Goal`, `GoalContribution`, `GoalProgress`, cálculo de aporte necessário e estimativa com regra D-05 (`add_months`). Subcomandos `finctl goal add|list|show|contribute|edit|rm` suportam formatos `table`, `json` e `csv`. Aportes manuais em metas vinculadas a conta bancária são bloqueados com erro de validação (código 1). Metas que atingem o alvo são automaticamente marcadas como concluídas e ocultadas da listagem padrão (a menos que `--all` seja informado). Reabertura suportada via `goal edit --reopen`.
 
 ### [ ] F6-07 — Projeção de fluxo de caixa
 - **Depende de:** G-02

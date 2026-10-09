@@ -13,6 +13,7 @@ pub use commands::category::handle_category_command;
 pub use commands::completions::handle_completions_command;
 pub use commands::expense::handle_expense_command;
 pub use commands::export::handle_export_command;
+pub use commands::goal::handle_goal_command;
 pub use commands::import_cmd::handle_import_command;
 pub use commands::income::handle_income_command;
 pub use commands::init::handle_init_command;
@@ -178,6 +179,14 @@ pub async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_budget_command(&pool, user_id, subcommand).await
+        }
+        Some(Commands::Goal { subcommand }) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_goal_command(&pool, user_id, subcommand).await
         }
         Some(Commands::Recurring { subcommand }) => {
             let db_url = get_database_url()?;

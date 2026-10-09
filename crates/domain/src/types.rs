@@ -56,6 +56,8 @@ define_id!(RecurringRuleId);
 define_id!(CardInvoiceId);
 define_id!(TagId);
 define_id!(AttachmentId);
+define_id!(GoalId);
+define_id!(ContributionId);
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,

@@ -80,6 +80,12 @@ pub enum Commands {
         subcommand: BudgetCommands,
     },
 
+    /// Metas de economia e acompanhamento de aportes
+    Goal {
+        #[command(subcommand)]
+        subcommand: GoalCommands,
+    },
+
     /// Gerenciamento de regras de lançamentos recorrentes
     Recurring {
         #[command(subcommand)]
@@ -588,6 +594,119 @@ pub struct BudgetStatusArgs {
     /// Formato de saída (table, json, csv)
     #[arg(short, long, default_value_t = OutputFormat::Table)]
     pub format: OutputFormat,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GoalCommands {
+    /// Adiciona uma nova meta de economia
+    Add(GoalAddArgs),
+
+    /// Lista as metas cadastradas
+    List(GoalListArgs),
+
+    /// Exibe detalhes, progresso, histórico de aportes e estimativas de uma meta
+    Show(GoalShowArgs),
+
+    /// Registra um aporte manual para uma meta (não permitido para metas vinculadas a conta)
+    Contribute(GoalContributeArgs),
+
+    /// Edita dados ou reabre uma meta de economia
+    Edit(GoalEditArgs),
+
+    /// Remove uma meta de economia (e seus aportes)
+    Rm(GoalRmArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GoalAddArgs {
+    /// Nome da meta (ex: "Viagem", "Reserva de Emergência")
+    pub name: String,
+
+    /// Valor alvo da meta (ex: 5000,00 ou 5000.00)
+    #[arg(short = 't', long = "target-amount", alias = "amount")]
+    pub target_amount: String,
+
+    /// Data alvo para conclusão da meta (YYYY-MM-DD, opcional)
+    #[arg(short = 'd', long = "target-date", alias = "date")]
+    pub target_date: Option<String>,
+
+    /// Nome ou ID da conta vinculada (opcional; se vinculada, o saldo da conta determina o progresso)
+    #[arg(short, long)]
+    pub account: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GoalListArgs {
+    /// Exibir também as metas já concluídas
+    #[arg(short, long)]
+    pub all: bool,
+
+    /// Formato de saída (table, json, csv)
+    #[arg(short, long, default_value_t = OutputFormat::Table)]
+    pub format: OutputFormat,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GoalShowArgs {
+    /// Nome ou ID da meta
+    pub goal: String,
+
+    /// Formato de saída (table, json, csv)
+    #[arg(short, long, default_value_t = OutputFormat::Table)]
+    pub format: OutputFormat,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GoalContributeArgs {
+    /// Nome ou ID da meta
+    pub goal: String,
+
+    /// Valor do aporte (ex: 200,00 ou 200.00)
+    pub amount: String,
+
+    /// Data do aporte (YYYY-MM-DD; padrão: hoje)
+    #[arg(short, long)]
+    pub date: Option<String>,
+
+    /// Observação descritiva do aporte (opcional)
+    #[arg(short, long)]
+    pub note: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GoalEditArgs {
+    /// Nome ou ID da meta a ser editada
+    pub goal: String,
+
+    /// Novo nome da meta
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// Novo valor alvo da meta
+    #[arg(short = 't', long = "target-amount", alias = "amount")]
+    pub target_amount: Option<String>,
+
+    /// Nova data alvo da meta (YYYY-MM-DD)
+    #[arg(short = 'd', long = "target-date", alias = "date")]
+    pub target_date: Option<String>,
+
+    /// Remove a data alvo da meta
+    #[arg(long = "clear-target-date")]
+    pub clear_target_date: bool,
+
+    /// Reabre a meta se ela estiver marcada como concluída
+    #[arg(long)]
+    pub reopen: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GoalRmArgs {
+    /// Nome ou ID da meta a ser removida
+    pub goal: String,
+
+    /// Pular confirmação interativa
+    #[arg(short = 'y', long = "yes")]
+    pub yes: bool,
 }
 
 #[derive(Subcommand, Debug, Clone)]
