@@ -101,7 +101,7 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Testes cobrem meta vinculada a conta e meta com aportes manuais
 - **Notas:** Implementada migration `20261001040000_create_goals.sql` com tabelas `goals` e `goal_contributions`, triggers de auditoria para `audit_log`, soft delete (`deleted_at`) e índices de unicidade parcial ativa por usuário. Domínio implementado com suporte a `Goal`, `GoalContribution`, `GoalProgress`, cálculo de aporte necessário e estimativa com regra D-05 (`add_months`). Subcomandos `finctl goal add|list|show|contribute|edit|rm` suportam formatos `table`, `json` e `csv`. Aportes manuais em metas vinculadas a conta bancária são bloqueados com erro de validação (código 1). Metas que atingem o alvo são automaticamente marcadas como concluídas e ocultadas da listagem padrão (a menos que `--all` seja informado). Reabertura suportada via `goal edit --reopen`.
 
-### [ ] F6-07 — Projeção de fluxo de caixa
+### [x] F6-07 — Projeção de fluxo de caixa
 - **Depende de:** G-02
 - **Escopo:** `finctl forecast [--months N] [--account X] [--granularity week|month]` projeta o saldo futuro a partir do saldo atual somando: lançamentos `pending`, ocorrências futuras das regras recorrentes ainda não geradas (apenas após `last_generated_date`, sem duplicar as já materializadas), parcelas futuras e faturas de cartão no vencimento (D-08). Destaca o primeiro período em que o saldo projetado fica negativo.
 - **Critérios de aceite:**
@@ -109,7 +109,7 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Compra no cartão sai na data de vencimento da fatura, e não na data da compra
   - Transferências entre contas próprias não alteram o saldo total projetado
   - Suporta `--format table|json|csv`
-- **Notas:**
+- **Notas:** Implementado domínio `ForecastGranularity`, `ForecastPeriod`, `CashflowForecast` e `generate_forecast_intervals` em `crates/domain/src/forecast.rs`. Implementado `ForecastService` em `crates/app/src/services/forecast_service.rs` projetando o fluxo de caixa a partir do saldo realizado (`paid`) e aplicando lançamentos `pending`, parcelas futuras desmembradas, regras recorrentes após `last_generated_date` e regime de caixa para cartões (regra D-08, onde compras do cartão têm saída de caixa alocada na data de vencimento da fatura correspondente). Transferências entre contas próprias se anulam na visão consolidada global. O comando `finctl forecast` suporta os formatos `table`, `json` e `csv`, destacando visualmente em vermelho e com alerta `⚠️` o primeiro período em que o saldo projetado fica negativo.
 
 ### [ ] F6-08 — Metas e projeção na TUI
 - **Depende de:** F6-02, F6-06, F6-07

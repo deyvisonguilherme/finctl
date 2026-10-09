@@ -5,6 +5,7 @@ pub mod budget;
 pub mod card_invoice;
 pub mod category;
 pub mod errors;
+pub mod forecast;
 pub mod goal;
 pub mod money;
 pub mod recurring;
@@ -23,6 +24,9 @@ pub use card_invoice::{
 };
 pub use category::Category;
 pub use errors::DomainError;
+pub use forecast::{
+    generate_forecast_intervals, CashflowForecast, ForecastGranularity, ForecastPeriod,
+};
 pub use goal::{add_months, months_difference, Goal, GoalContribution, GoalProgress, GoalStatus};
 pub use money::{format_decimal_pt_br, Money};
 pub use recurring::RecurringRule;

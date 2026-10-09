@@ -13,6 +13,7 @@ pub use commands::category::handle_category_command;
 pub use commands::completions::handle_completions_command;
 pub use commands::expense::handle_expense_command;
 pub use commands::export::handle_export_command;
+pub use commands::forecast::handle_forecast_command;
 pub use commands::goal::handle_goal_command;
 pub use commands::import_cmd::handle_import_command;
 pub use commands::income::handle_income_command;
@@ -203,6 +204,14 @@ pub async fn run() -> Result<(), (String, u8)> {
                 .map_err(|e| (e.to_string(), 2))?;
             let user_id = get_current_user_id();
             handle_balance_command(args, &pool, user_id).await
+        }
+        Some(Commands::Forecast(args)) => {
+            let db_url = get_database_url()?;
+            let pool = storage::create_pool(&db_url)
+                .await
+                .map_err(|e| (e.to_string(), 2))?;
+            let user_id = get_current_user_id();
+            handle_forecast_command(&pool, user_id, args).await
         }
         Some(Commands::Report { subcommand }) => {
             let db_url = get_database_url()?;

@@ -95,6 +95,9 @@ pub enum Commands {
     /// Consulta de saldos consolidados por conta e total geral
     Balance(BalanceArgs),
 
+    /// Projeção futura de fluxo de caixa baseada em saldo atual, pendências, recorrências e faturas
+    Forecast(ForecastArgs),
+
     /// Relatórios financeiros e comparativos
     Report {
         #[command(subcommand)]
@@ -849,6 +852,30 @@ pub struct BalanceArgs {
     /// Inclui lançamentos previstos (pendentes) no cálculo do saldo projetado
     #[arg(long)]
     pub projected: bool,
+
+    /// Formato de saída (table, json, csv)
+    #[arg(short, long, default_value_t = OutputFormat::Table)]
+    pub format: OutputFormat,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ForecastArgs {
+    /// Quantidade de meses a projetar no horizonte (padrão: 3)
+    #[arg(short = 'm', long = "months", default_value = "3")]
+    pub months: u32,
+
+    /// Filtrar por uma conta específica (nome ou ID; por padrão projeta fluxo consolidado)
+    #[arg(short, long)]
+    pub account: Option<String>,
+
+    /// Granularidade dos períodos (week | month; padrão: month)
+    #[arg(
+        short,
+        long,
+        default_value = "month",
+        value_parser = ["week", "month", "semana", "mês", "mes"]
+    )]
+    pub granularity: String,
 
     /// Formato de saída (table, json, csv)
     #[arg(short, long, default_value_t = OutputFormat::Table)]
