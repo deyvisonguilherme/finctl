@@ -5,6 +5,36 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.3.0] - 2026-10-09
+
+### Adicionado
+- **Interface Interativa em Terminal — TUI (F6-01 a F6-05, F6-08):**
+  - Aplicação TUI completa baseada em arquitetura TEA (Elm) com `ratatui` e `crossterm`.
+  - Processamento de banco de dados assíncrono em segundo plano via canais Tokio MPSC sem congelamento da interface.
+  - Suporte a 5 abas integradas (`Dashboard`, `Lançamentos`, `Relatórios`, `Orçamentos`, `Metas e Projeção`).
+  - Navegação global por teclado (`Tab`, `BackTab`, `1` a `5`, `q`, `r`, `t`, `?`).
+  - Alternância dinâmica entre temas Escuro e Claro (`t` ou `--theme light|dark`).
+  - Aba de Lançamentos com paginação, busca textual (`/`), modal de filtros avançados (`f`), formulário de cadastro/edição (`a`, `e`), exclusão com diálogo de confirmação (`d`) e marcação em lote como pago (`p`).
+  - Aba de Relatórios com 3 sub-visões: Gastos por Categoria, Evolução Mensal com Sparklines e Comparativo entre Meses com variações percentuais.
+  - Aba de Metas e Projeção com sub-visões de Metas de Economia (com gauges visuais de progresso e modal de aporte) e Projeção de Fluxo de Caixa (com sparkline e alerta de déficit).
+  - Execução automática de migrações SQL pendentes na inicialização da TUI (`storage::run_migrations`).
+- **Metas de Economia (F6-06):**
+  - Migration `create_goals` e suporte a tabelas `goals` e `goal_contributions`.
+  - Subcomandos `finctl goal add|list|show|contribute|edit|rm` com formatos `table`, `json` e `csv`.
+  - Suporte a metas vinculadas a contas bancárias (progresso derivado do saldo) e metas manuais alimentadas por aportes.
+  - Cálculo automático de aporte mensal necessário até a data alvo e estimativa de conclusão com base na média móvel dos últimos 90 dias.
+  - Conclusão automática ao atingir 100% da meta e suporte a reabertura via `finctl goal edit --reopen`.
+- **Projeção de Fluxo de Caixa (F6-07):**
+  - Subcomando `finctl forecast [--months N] [--account X] [--granularity week|month] [--include-goals]`.
+  - Projeção consolidada no regime de caixa considerando lançamentos pendentes, parcelas futuras, regras recorrentes após `last_generated_date` e faturas de cartão no vencimento (regra D-08).
+  - Identificação e destaque automático do primeiro período deficitário com alerta `⚠️`.
+  - Flag `--include-goals` para simulação opcional de saídas planejadas de metas ativas no fluxo de caixa.
+
+### Modificado
+- Remoção do corte arbitrário de 30 dias na listagem de lançamentos da TUI (`all_time: true`), permitindo navegar e paginar por todo o histórico (passado e lançamentos futuros agendados).
+- Correção de duplicação do prefixo monetário `R$` na saída tabular de `finctl forecast`.
+- Indicador do total de contas cadastradas no cabeçalho do painel de saldos do Dashboard da TUI.
+
 ## [0.2.0] - 2026-10-08
 
 ### Adicionado

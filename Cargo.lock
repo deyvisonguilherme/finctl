@@ -84,7 +84,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "csv",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "rust_decimal",
@@ -814,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "finctl"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "app",
@@ -2726,7 +2726,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "app",
  "chrono",
@@ -3219,7 +3219,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "app",
  "chrono",
