@@ -159,6 +159,70 @@ pub async fn handle_tui_command(
                         }
                     }
                 }
+                tui::Command::FetchGoalsData => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let goal_service = app::GoalService::new(&pool_clone);
+                    match goal_service.list_goals(user_id, true).await {
+                        Ok(goals) => {
+                            let _ = msg_tx.send(tui::Message::GoalsDataLoaded(goals)).await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::FetchForecastData {
+                    months,
+                    granularity,
+                    include_goals,
+                } => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let forecast_service = app::ForecastService::new(&pool_clone);
+                    match forecast_service
+                        .generate_forecast(app::ForecastInput {
+                            user_id,
+                            months: Some(months),
+                            account_query: None,
+                            granularity: Some(granularity),
+                            as_of_date: None,
+                            include_goals,
+                        })
+                        .await
+                    {
+                        Ok(data) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ForecastDataLoaded(Box::new(data)))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::AddGoalContribution(mut input) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    input.user_id = user_id;
+                    let goal_service = app::GoalService::new(&pool_clone);
+                    match goal_service.add_contribution(input).await {
+                        Ok(contrib) => {
+                            let _ = msg_tx
+                                .send(tui::Message::GoalContributionSuccess(format!(
+                                    "Aporte de R$ {} registrado com sucesso!",
+                                    domain::format_decimal_pt_br(contrib.amount.as_decimal())
+                                )))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
                 tui::Command::Custom(s) => {
                     let _ = msg_tx.send(tui::Message::StatusMessage(s)).await;
                 }

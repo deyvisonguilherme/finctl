@@ -877,6 +877,10 @@ pub struct ForecastArgs {
     )]
     pub granularity: String,
 
+    /// Inclui aportes mensais planejados de metas ativas como saídas projetadas
+    #[arg(long = "include-goals")]
+    pub include_goals: bool,
+
     /// Formato de saída (table, json, csv)
     #[arg(short, long, default_value_t = OutputFormat::Table)]
     pub format: OutputFormat,

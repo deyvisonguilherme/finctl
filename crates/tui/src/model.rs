@@ -1,7 +1,10 @@
 use crate::theme::{Theme, ThemeMode};
 use app::{DashboardData, ReportsScreenData, TransactionDetails};
 use chrono::{DateTime, Datelike, Local};
-use domain::{TransactionId, TransactionKind, TransactionStatus};
+use domain::{
+    CashflowForecast, ForecastGranularity, GoalId, GoalProgress, TransactionId, TransactionKind,
+    TransactionStatus,
+};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -314,6 +317,90 @@ impl Default for ReportsTabState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GoalsSubView {
+    #[default]
+    Goals,
+    Forecast,
+}
+
+impl GoalsSubView {
+    pub const ALL: [GoalsSubView; 2] = [GoalsSubView::Goals, GoalsSubView::Forecast];
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            GoalsSubView::Goals => "1: Metas de Economia",
+            GoalsSubView::Forecast => "2: Projeção de Fluxo de Caixa",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ContributionFormField {
+    #[default]
+    Amount,
+    Date,
+    Note,
+}
+
+impl ContributionFormField {
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Amount => Self::Date,
+            Self::Date => Self::Note,
+            Self::Note => Self::Amount,
+        }
+    }
+
+    pub fn previous(&self) -> Self {
+        match self {
+            Self::Amount => Self::Note,
+            Self::Date => Self::Amount,
+            Self::Note => Self::Date,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContributionModalState {
+    pub goal_id: GoalId,
+    pub goal_name: String,
+    pub amount_input: String,
+    pub date_input: String,
+    pub note_input: String,
+    pub focused_field: ContributionFormField,
+    pub validation_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GoalsTabState {
+    pub active_subview: GoalsSubView,
+    pub goals: Vec<GoalProgress>,
+    pub selected_goal_index: usize,
+    pub forecast: Option<CashflowForecast>,
+    pub forecast_months: u32,
+    pub forecast_granularity: ForecastGranularity,
+    pub include_goals: bool,
+    pub forecast_cursor: usize,
+    pub contribution_modal: Option<ContributionModalState>,
+}
+
+impl Default for GoalsTabState {
+    fn default() -> Self {
+        Self {
+            active_subview: GoalsSubView::Goals,
+            goals: Vec::new(),
+            selected_goal_index: 0,
+            forecast: None,
+            forecast_months: 6,
+            forecast_granularity: ForecastGranularity::Month,
+            include_goals: false,
+            forecast_cursor: 0,
+            contribution_modal: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     pub active_tab: Tab,
@@ -326,6 +413,7 @@ pub struct Model {
     pub dashboard_data: Option<DashboardData>,
     pub transactions_state: TransactionsTabState,
     pub reports_state: ReportsTabState,
+    pub goals_state: GoalsTabState,
     pub error_message: Option<String>,
     pub is_help_open: bool,
     pub help_scroll: usize,
@@ -355,6 +443,7 @@ impl Model {
             dashboard_data: None,
             transactions_state: TransactionsTabState::default(),
             reports_state: ReportsTabState::default(),
+            goals_state: GoalsTabState::default(),
             error_message: None,
             is_help_open: false,
             help_scroll: 0,

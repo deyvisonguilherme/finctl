@@ -1,9 +1,9 @@
 use crate::errors::AppError;
 use chrono::{NaiveDate, Utc};
 use domain::{
-    add_months, calculate_invoice_dates_for_transaction, generate_forecast_intervals, Account,
-    AccountId, AccountKind, CashflowForecast, ForecastGranularity, ForecastPeriod, InvoiceStatus,
-    RecurringRule, TransactionKind, TransactionStatus, UserId,
+    add_months, calculate_invoice_dates_for_transaction, generate_forecast_intervals,
+    months_difference, Account, AccountId, AccountKind, CashflowForecast, ForecastGranularity,
+    ForecastPeriod, InvoiceStatus, RecurringRule, TransactionKind, TransactionStatus, UserId,
 };
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -19,6 +19,7 @@ pub struct ForecastInput {
     pub account_query: Option<String>,
     pub granularity: Option<ForecastGranularity>,
     pub as_of_date: Option<NaiveDate>,
+    pub include_goals: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -284,6 +285,49 @@ impl<'a> ForecastService<'a> {
                         is_transfer: false,
                         description: format!("Recorrente: {}", rule.description),
                     });
+                }
+            }
+        }
+
+        // 5.4. Aportes planejados de metas ativas (se include_goals for true)
+        if input.include_goals {
+            let active_goals = GoalRepository::list_by_user(self.pool, user_id, false).await?;
+            for goal in active_goals {
+                // Metas com conta bancária vinculada já usam o saldo bancário da conta (evitar duplicidade)
+                if goal.is_account_linked() {
+                    continue;
+                }
+
+                if let Some(target_date) = goal.target_date {
+                    if target_date > today {
+                        let current_sum =
+                            GoalRepository::get_manual_goal_sum(self.pool, user_id, goal.id)
+                                .await?;
+                        let target_dec = goal.target_amount.as_decimal();
+                        if current_sum < target_dec {
+                            let remaining = target_dec - current_sum;
+                            let months_left = months_difference(today, target_date).max(1);
+                            let monthly_needed =
+                                (remaining / Decimal::from(months_left)).round_dp(2);
+
+                            let mut m = 0;
+                            while m < months_left {
+                                if let Some(plan_date) = add_months(today, m) {
+                                    if plan_date > target_date || plan_date > horizon_end {
+                                        break;
+                                    }
+                                    events.push(FlowEvent {
+                                        date: plan_date,
+                                        amount: -monthly_needed,
+                                        account_id: AccountId::default(),
+                                        is_transfer: false,
+                                        description: format!("Aporte Meta: {}", goal.name),
+                                    });
+                                }
+                                m += 1;
+                            }
+                        }
+                    }
                 }
             }
         }

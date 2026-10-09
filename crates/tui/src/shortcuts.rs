@@ -1,4 +1,3 @@
-/// Categorias de atalhos da interface TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShortcutCategory {
     Global,
@@ -6,16 +5,18 @@ pub enum ShortcutCategory {
     Transactions,
     TransactionModals,
     Reports,
+    Goals,
     Help,
 }
 
 impl ShortcutCategory {
-    pub const ALL: [ShortcutCategory; 6] = [
+    pub const ALL: [ShortcutCategory; 7] = [
         ShortcutCategory::Global,
         ShortcutCategory::Dashboard,
         ShortcutCategory::Transactions,
         ShortcutCategory::TransactionModals,
         ShortcutCategory::Reports,
+        ShortcutCategory::Goals,
         ShortcutCategory::Help,
     ];
 
@@ -26,6 +27,7 @@ impl ShortcutCategory {
             Self::Transactions => "Lançamentos (Tabela)",
             Self::TransactionModals => "Formulários & Modais",
             Self::Reports => "Relatórios Analíticos",
+            Self::Goals => "Metas & Projeção",
             Self::Help => "Painel de Ajuda",
         }
     }
@@ -201,6 +203,42 @@ impl ShortcutRegistry {
                 key: "j / k",
                 description: "Rolar lista de categorias / comparativo",
                 category: ShortcutCategory::Reports,
+            },
+            // Metas & Projeção
+            Shortcut {
+                key: "1 / 2",
+                description: "Alternar entre Metas [1] e Projeção de Fluxo [2]",
+                category: ShortcutCategory::Goals,
+            },
+            Shortcut {
+                key: "j / k / ↑ / ↓",
+                description: "Navegar metas ou períodos da projeção",
+                category: ShortcutCategory::Goals,
+            },
+            Shortcut {
+                key: "c / a",
+                description: "Registrar aporte manual na meta selecionada",
+                category: ShortcutCategory::Goals,
+            },
+            Shortcut {
+                key: "g",
+                description: "Alternar inclusão de saídas planejadas das metas (--include-goals)",
+                category: ShortcutCategory::Goals,
+            },
+            Shortcut {
+                key: "w / m",
+                description: "Alternar granularidade da projeção (Semanal / Mensal)",
+                category: ShortcutCategory::Goals,
+            },
+            Shortcut {
+                key: "+ / -",
+                description: "Ajustar horizonte de projeção (3 a 24 meses)",
+                category: ShortcutCategory::Goals,
+            },
+            Shortcut {
+                key: "r",
+                description: "Recarregar metas e projeção",
+                category: ShortcutCategory::Goals,
             },
             // Painel de Ajuda
             Shortcut {

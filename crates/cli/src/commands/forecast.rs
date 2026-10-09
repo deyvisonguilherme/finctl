@@ -26,6 +26,7 @@ pub async fn handle_forecast_command(
             account_query: args.account,
             granularity: Some(granularity),
             as_of_date: None,
+            include_goals: args.include_goals,
         })
         .await
         .map_err(|e| match e {
@@ -47,6 +48,8 @@ pub async fn handle_forecast_command(
                 ForecastGranularity::Week => "Semanal",
             };
 
+            let goals_desc = if args.include_goals { "Sim" } else { "Não" };
+
             println!("PROJEÇÃO DE FLUXO DE CAIXA");
             println!("Escopo: {}", scope_desc);
             println!(
@@ -54,8 +57,8 @@ pub async fn handle_forecast_command(
                 format_decimal_pt_br(forecast.initial_balance)
             );
             println!(
-                "Horizonte: {} meses (Granularidade: {})",
-                forecast.months, gran_desc
+                "Horizonte: {} meses (Granularidade: {}) | Metas Planejadas: {}",
+                forecast.months, gran_desc, goals_desc
             );
             println!();
 

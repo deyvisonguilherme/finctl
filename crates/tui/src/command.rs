@@ -1,6 +1,8 @@
-use app::{CreateTransactionInput, EditTransactionInput, ListTransactionsInput};
+use app::{
+    AddContributionInput, CreateTransactionInput, EditTransactionInput, ListTransactionsInput,
+};
 use chrono::NaiveDate;
-use domain::TransactionId;
+use domain::{ForecastGranularity, TransactionId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -15,5 +17,12 @@ pub enum Command {
         month: String,
         include_pending: bool,
     },
+    FetchGoalsData,
+    FetchForecastData {
+        months: u32,
+        granularity: ForecastGranularity,
+        include_goals: bool,
+    },
+    AddGoalContribution(AddContributionInput),
     Custom(String),
 }

@@ -111,13 +111,13 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Suporta `--format table|json|csv`
 - **Notas:** Implementado domínio `ForecastGranularity`, `ForecastPeriod`, `CashflowForecast` e `generate_forecast_intervals` em `crates/domain/src/forecast.rs`. Implementado `ForecastService` em `crates/app/src/services/forecast_service.rs` projetando o fluxo de caixa a partir do saldo realizado (`paid`) e aplicando lançamentos `pending`, parcelas futuras desmembradas, regras recorrentes após `last_generated_date` e regime de caixa para cartões (regra D-08, onde compras do cartão têm saída de caixa alocada na data de vencimento da fatura correspondente). Transferências entre contas próprias se anulam na visão consolidada global. O comando `finctl forecast` suporta os formatos `table`, `json` e `csv`, destacando visualmente em vermelho e com alerta `⚠️` o primeiro período em que o saldo projetado fica negativo.
 
-### [ ] F6-08 — Metas e projeção na TUI
+### [x] F6-08 — Metas e projeção na TUI
 - **Depende de:** F6-02, F6-06, F6-07
 - **Escopo:** tela de metas (barra de progresso, aporte necessário, registrar aporte) e tela de projeção (linha do saldo futuro com marcação do período negativo); aportes planejados de metas entram na projeção como saída opcional (`--include-goals`).
 - **Critérios de aceite:**
   - Valores iguais aos de `goal show` e `forecast`
   - Com `--include-goals`, o aporte mensal necessário reduz o saldo projetado, sem contagem dupla com aportes já registrados
-- **Notas:**
+- **Notas:** Implementada a 5ª aba na TUI (`Metas`) com duas sub-visões acessíveis via teclas `1` e `2`: (1) Visão de Metas exibindo lista com medidores visuais de progresso (Gauge com cores por faixa percentual), detalhes completos da meta selecionada (alvo, atual, restante, percentual, data alvo, aporte mensal necessário e média recente de aportes calculada), e modal interativo sobreposto para registrar aportes manuais diretamente com atalhos `c`/`a`; (2) Visão de Projeção exibindo Sparkline visual do fluxo de caixa projetado, destaque do primeiro período negativo com alerta `⚠️`, tabela com abertura, receitas, despesas, variação e saldo final de cada período, controles de granularidade (`w`/`m`), horizonte (`+`/`-`) e alternância de simulação de metas (`g`). No backend e CLI, adicionada flag `--include-goals` em `finctl forecast`, deduzindo com precisão os aportes mensais necessários das metas ativas sem duplicidade com aportes manuais ou saldos já acumulados. Cobertura de testes unitários, testes de integração e testes visuais de snapshot ratatui implementados e passando 100%.
 
 ---
 

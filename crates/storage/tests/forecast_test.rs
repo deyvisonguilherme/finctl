@@ -92,6 +92,7 @@ async fn test_forecast_no_double_counting_recurring_rule() {
             account_query: Some("Conta Salário".to_string()),
             granularity: Some(ForecastGranularity::Month),
             as_of_date: Some(today),
+            include_goals: false,
         })
         .await
         .unwrap();
@@ -183,6 +184,7 @@ async fn test_forecast_installments_and_credit_card_due_date_rule_d08() {
             account_query: None,
             granularity: Some(ForecastGranularity::Month),
             as_of_date: Some(today),
+            include_goals: false,
         })
         .await
         .unwrap();
@@ -289,6 +291,7 @@ async fn test_forecast_transfers_do_not_affect_consolidated_total() {
             account_query: None,
             granularity: Some(ForecastGranularity::Month),
             as_of_date: Some(today),
+            include_goals: false,
         })
         .await
         .unwrap();
@@ -307,6 +310,7 @@ async fn test_forecast_transfers_do_not_affect_consolidated_total() {
             account_query: Some("Banco A".to_string()),
             granularity: Some(ForecastGranularity::Month),
             as_of_date: Some(today),
+            include_goals: false,
         })
         .await
         .unwrap();
@@ -373,6 +377,7 @@ async fn test_forecast_highlights_first_negative_period() {
             account_query: None,
             granularity: Some(ForecastGranularity::Month),
             as_of_date: Some(today),
+            include_goals: false,
         })
         .await
         .unwrap();
@@ -380,4 +385,91 @@ async fn test_forecast_highlights_first_negative_period() {
     assert_eq!(forecast.initial_balance, dec!(1000.00));
     assert_eq!(forecast.first_negative_period, Some("2026-11".to_string()));
     assert_eq!(forecast.lowest_projected_balance, dec!(-500.00));
+}
+
+#[tokio::test]
+async fn test_forecast_with_include_goals_simulation() {
+    let test_db = TestDb::setup().await;
+    let pool = &test_db.pool;
+    let user_id = test_db.user_id;
+
+    let acc_service = AccountService::new(pool);
+    let goal_service = app::GoalService::new(pool);
+    let forecast_service = ForecastService::new(pool);
+
+    let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
+
+    // Saldo inicial de R$ 5.000,00
+    acc_service
+        .create_account(
+            user_id,
+            "Conta Corrente".to_string(),
+            AccountKind::Checking,
+            Money::from_decimal_non_negative(dec!(5000.00)).unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Criar meta manual de R$ 6.000,00 com data alvo para 3 meses à frente (janeiro/2027)
+    // target = 6000, current = 0, remaining = 6000, months_left = 3 -> monthly_needed = 2000.00/mês
+    let goal = goal_service
+        .create_goal(app::CreateGoalInput {
+            user_id,
+            name: "Reserva Emergencial".to_string(),
+            target_amount: Money::from_decimal_non_negative(dec!(6000.00)).unwrap(),
+            target_date: Some(NaiveDate::from_ymd_opt(2027, 1, 15).unwrap()),
+            account_query: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(!goal.is_account_linked());
+
+    // 1. Sem include_goals: saldo projetado permanece em 5.000,00
+    let forecast_without_goals = forecast_service
+        .generate_forecast(ForecastInput {
+            user_id,
+            months: Some(3),
+            account_query: None,
+            granularity: Some(ForecastGranularity::Month),
+            as_of_date: Some(today),
+            include_goals: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(forecast_without_goals.initial_balance, dec!(5000.00));
+    assert_eq!(
+        forecast_without_goals
+            .periods
+            .last()
+            .unwrap()
+            .closing_balance,
+        dec!(5000.00)
+    );
+
+    // 2. Com include_goals: as metas saem como saída planejada de caixa
+    let forecast_with_goals = forecast_service
+        .generate_forecast(ForecastInput {
+            user_id,
+            months: Some(3),
+            account_query: None,
+            granularity: Some(ForecastGranularity::Month),
+            as_of_date: Some(today),
+            include_goals: true,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(forecast_with_goals.initial_balance, dec!(5000.00));
+    // Cada mês deve ter despesa de 2.000,00 da meta
+    let oct = forecast_with_goals
+        .periods
+        .iter()
+        .find(|p| p.period_label == "2026-10")
+        .unwrap();
+    assert_eq!(oct.total_expense, dec!(2000.00));
+
+    // Após 3 meses com -2000 cada: 5000 - 6000 = -1000.00 (primeiro período negativo detectado)
+    assert!(forecast_with_goals.first_negative_period.is_some());
 }

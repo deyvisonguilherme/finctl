@@ -10,7 +10,10 @@ pub mod view;
 
 pub use command::Command;
 pub use message::Message;
-pub use model::{Model, PeriodModalState, ReportSubView, ReportsTabState, Tab};
+pub use model::{
+    ContributionFormField, ContributionModalState, GoalsSubView, GoalsTabState, Model,
+    PeriodModalState, ReportSubView, ReportsTabState, Tab,
+};
 pub use runner::run_tui;
 pub use shortcuts::{Shortcut, ShortcutCategory, ShortcutRegistry};
 pub use terminal::{init_terminal, install_panic_hook, restore_terminal};

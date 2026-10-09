@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 use sqlx::PgPool;
 use storage::{AccountRepository, GoalRepository};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateGoalInput {
     pub user_id: UserId,
     pub name: String,
@@ -13,6 +14,7 @@ pub struct CreateGoalInput {
     pub account_query: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditGoalInput {
     pub user_id: UserId,
     pub identifier: String,
@@ -22,6 +24,7 @@ pub struct EditGoalInput {
     pub reopen: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddContributionInput {
     pub user_id: UserId,
     pub goal_identifier: String,
