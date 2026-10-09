@@ -1,13 +1,15 @@
 use crate::command::Command;
 use crate::message::Message;
 use crate::model::{
-    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model,
-    PeriodModalState, ReportSubView, Tab, TransactionFilterState, TransactionFormState,
+    ContributionFormField, ContributionModalState, DeleteConfirmState, FilterField,
+    FilterModalState, FormField, FormMode, GoalsSubView, Model, PeriodModalState, ReportSubView,
+    Tab, TransactionFilterState, TransactionFormState,
 };
-use app::ListTransactionsInput;
+use crate::theme::{Theme, ThemeMode};
+use app::{AddContributionInput, ListTransactionsInput};
 use chrono::{Local, NaiveDate};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use domain::{Money, TransactionKind, TransactionStatus, UserId};
+use domain::{ForecastGranularity, Money, TransactionKind, TransactionStatus, UserId};
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -24,6 +26,7 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
             match model.active_tab {
                 Tab::Transactions => Some(build_fetch_transactions_command(model)),
                 Tab::Reports => Some(build_fetch_reports_command(model)),
+                Tab::Goals => Some(build_fetch_goals_command(model)),
                 _ => None,
             }
         }
@@ -32,6 +35,7 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
             match model.active_tab {
                 Tab::Transactions => Some(build_fetch_transactions_command(model)),
                 Tab::Reports => Some(build_fetch_reports_command(model)),
+                Tab::Goals => Some(build_fetch_goals_command(model)),
                 _ => None,
             }
         }
@@ -40,6 +44,7 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
             match model.active_tab {
                 Tab::Transactions => Some(build_fetch_transactions_command(model)),
                 Tab::Reports => Some(build_fetch_reports_command(model)),
+                Tab::Goals => Some(build_fetch_goals_command(model)),
                 _ => None,
             }
         }
@@ -119,10 +124,63 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
             model.reports_state.data = Some(*data);
             None
         }
+        Message::GoalsDataLoaded(goals) => {
+            model.is_loading = false;
+            model.error_message = None;
+            let count = goals.len();
+            model.goals_state.goals = goals;
+            if model.goals_state.selected_goal_index >= count {
+                model.goals_state.selected_goal_index = count.saturating_sub(1);
+            }
+            model.status_message = format!("Metas carregadas ({} cadastradas)", count);
+            Some(build_fetch_forecast_command(model))
+        }
+        Message::ForecastDataLoaded(forecast) => {
+            model.is_loading = false;
+            model.error_message = None;
+            let count = forecast.periods.len();
+            model.goals_state.forecast = Some(*forecast);
+            if model.goals_state.forecast_cursor >= count {
+                model.goals_state.forecast_cursor = count.saturating_sub(1);
+            }
+            model.status_message = format!("Projeção carregada ({} períodos)", count);
+            None
+        }
+        Message::GoalContributionSuccess(msg) => {
+            model.is_loading = false;
+            model.error_message = None;
+            model.status_message = msg;
+            model.goals_state.contribution_modal = None;
+            Some(build_fetch_goals_command(model))
+        }
         Message::ErrorOccurred(err) => {
             model.is_loading = false;
             model.error_message = Some(err.clone());
             model.status_message = format!("Erro: {err}");
+            None
+        }
+        Message::ToggleHelp => {
+            model.is_help_open = !model.is_help_open;
+            if model.is_help_open {
+                model.help_scroll = 0;
+            }
+            None
+        }
+        Message::CloseHelp => {
+            model.is_help_open = false;
+            None
+        }
+        Message::ToggleTheme => {
+            model.theme = model.theme.toggle();
+            let name = match model.theme.mode {
+                ThemeMode::Dark => "Escuro",
+                ThemeMode::Light => "Claro",
+            };
+            model.status_message = format!("Tema visual alterado para: {name}");
+            None
+        }
+        Message::SetTheme(mode) => {
+            model.theme = Theme::from_mode(mode);
             None
         }
     }
@@ -131,6 +189,36 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Command> {
 fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return update(model, Message::Quit);
+    }
+
+    // Se o painel de ajuda estiver aberto, capturar navegação ou fechamento
+    if model.is_help_open {
+        match key.code {
+            KeyCode::Esc
+            | KeyCode::Char('?')
+            | KeyCode::Char('q')
+            | KeyCode::Char('Q')
+            | KeyCode::Enter => {
+                model.is_help_open = false;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                model.help_scroll = model.help_scroll.saturating_add(1);
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                model.help_scroll = model.help_scroll.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                model.help_scroll = model.help_scroll.saturating_add(5);
+            }
+            KeyCode::PageUp => {
+                model.help_scroll = model.help_scroll.saturating_sub(5);
+            }
+            KeyCode::Home => {
+                model.help_scroll = 0;
+            }
+            _ => {}
+        }
+        return None;
     }
 
     // Se estivermos na aba de Lançamentos e algum modal ou busca estiver ativa
@@ -432,6 +520,143 @@ fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
         }
     }
 
+    // Se estivermos na aba de Metas e Projeção
+    if model.active_tab == Tab::Goals {
+        if model.goals_state.contribution_modal.is_some() {
+            return handle_contribution_modal_key(model, key);
+        }
+
+        match key.code {
+            KeyCode::Char('1') => {
+                model.goals_state.active_subview = GoalsSubView::Goals;
+                return None;
+            }
+            KeyCode::Char('2') => {
+                model.goals_state.active_subview = GoalsSubView::Forecast;
+                return None;
+            }
+            KeyCode::Char('v') | KeyCode::Char('V') => {
+                model.goals_state.active_subview = match model.goals_state.active_subview {
+                    GoalsSubView::Goals => GoalsSubView::Forecast,
+                    GoalsSubView::Forecast => GoalsSubView::Goals,
+                };
+                return None;
+            }
+            _ => {}
+        }
+
+        match model.goals_state.active_subview {
+            GoalsSubView::Goals => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if model.goals_state.selected_goal_index > 0 {
+                        model.goals_state.selected_goal_index -= 1;
+                    }
+                    return None;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let total = model.goals_state.goals.len();
+                    if total > 0 && model.goals_state.selected_goal_index < total - 1 {
+                        model.goals_state.selected_goal_index += 1;
+                    }
+                    return None;
+                }
+                KeyCode::Char('c')
+                | KeyCode::Char('C')
+                | KeyCode::Char('a')
+                | KeyCode::Char('A') => {
+                    if let Some(progress) = model
+                        .goals_state
+                        .goals
+                        .get(model.goals_state.selected_goal_index)
+                    {
+                        if progress.goal.is_account_linked() {
+                            model.status_message = "Metas vinculadas a conta acompanham o saldo bancário. Aportes manuais não se aplicam.".to_string();
+                        } else if progress.is_completed {
+                            model.status_message =
+                                "Meta já concluída. Reabra via CLI se desejar adicionar aportes."
+                                    .to_string();
+                        } else {
+                            let today_str =
+                                Local::now().date_naive().format("%Y-%m-%d").to_string();
+                            model.goals_state.contribution_modal = Some(ContributionModalState {
+                                goal_id: progress.goal.id,
+                                goal_name: progress.goal.name.clone(),
+                                amount_input: String::new(),
+                                date_input: today_str,
+                                note_input: String::new(),
+                                focused_field: ContributionFormField::Amount,
+                                validation_error: None,
+                            });
+                        }
+                    } else {
+                        model.status_message = "Nenhuma meta selecionada para aporte.".to_string();
+                    }
+                    return None;
+                }
+                _ => {}
+            },
+            GoalsSubView::Forecast => match key.code {
+                KeyCode::Char('g') | KeyCode::Char('G') => {
+                    model.goals_state.include_goals = !model.goals_state.include_goals;
+                    model.is_loading = true;
+                    model.status_message = if model.goals_state.include_goals {
+                        "Simulando projeção COM saídas de metas ativas".to_string()
+                    } else {
+                        "Simulando projeção SEM saídas de metas".to_string()
+                    };
+                    return Some(build_fetch_forecast_command(model));
+                }
+                KeyCode::Char('w') | KeyCode::Char('W') => {
+                    model.goals_state.forecast_granularity = ForecastGranularity::Week;
+                    model.is_loading = true;
+                    return Some(build_fetch_forecast_command(model));
+                }
+                KeyCode::Char('m') | KeyCode::Char('M') => {
+                    model.goals_state.forecast_granularity = ForecastGranularity::Month;
+                    model.is_loading = true;
+                    return Some(build_fetch_forecast_command(model));
+                }
+                KeyCode::Char('+') | KeyCode::Char('=') => {
+                    if model.goals_state.forecast_months < 24 {
+                        model.goals_state.forecast_months =
+                            (model.goals_state.forecast_months + 3).min(24);
+                        model.is_loading = true;
+                        return Some(build_fetch_forecast_command(model));
+                    }
+                    return None;
+                }
+                KeyCode::Char('-') | KeyCode::Char('_') => {
+                    if model.goals_state.forecast_months > 3 {
+                        model.goals_state.forecast_months =
+                            (model.goals_state.forecast_months - 3).max(3);
+                        model.is_loading = true;
+                        return Some(build_fetch_forecast_command(model));
+                    }
+                    return None;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if model.goals_state.forecast_cursor > 0 {
+                        model.goals_state.forecast_cursor -= 1;
+                    }
+                    return None;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let total = model
+                        .goals_state
+                        .forecast
+                        .as_ref()
+                        .map(|f| f.periods.len())
+                        .unwrap_or(0);
+                    if total > 0 && model.goals_state.forecast_cursor < total - 1 {
+                        model.goals_state.forecast_cursor += 1;
+                    }
+                    return None;
+                }
+                _ => {}
+            },
+        }
+    }
+
     // Teclas globais de navegação e atalhos
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => update(model, Message::Quit),
@@ -442,6 +667,12 @@ fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
         KeyCode::Char('3') => update(model, Message::SelectTab(2)),
         KeyCode::Char('4') => update(model, Message::SelectTab(3)),
         KeyCode::Char('5') => update(model, Message::SelectTab(4)),
+        KeyCode::Char('?') => {
+            model.is_help_open = true;
+            model.help_scroll = 0;
+            None
+        }
+        KeyCode::Char('t') | KeyCode::Char('T') => update(model, Message::ToggleTheme),
         KeyCode::Char('r') | KeyCode::Char('R') => {
             model.is_loading = true;
             model.error_message = None;
@@ -450,6 +681,8 @@ fn handle_key_event(model: &mut Model, key: KeyEvent) -> Option<Command> {
                 Some(build_fetch_transactions_command(model))
             } else if model.active_tab == Tab::Reports {
                 Some(build_fetch_reports_command(model))
+            } else if model.active_tab == Tab::Goals {
+                Some(build_fetch_goals_command(model))
             } else {
                 Some(Command::RefreshData)
             }
@@ -772,6 +1005,7 @@ pub fn build_fetch_transactions_command(model: &Model) -> Command {
             Some(state.search_query.trim().to_string())
         },
         deleted: Some(false),
+        all_time: true,
         ..Default::default()
     };
     Command::FetchTransactions(input)
@@ -834,4 +1068,110 @@ pub fn adjust_month_string(month_str: &str, delta: i32) -> Option<String> {
     let new_year = total_m / 12;
     let new_month = (total_m % 12 + 1) as u32;
     Some(format!("{:04}-{:02}", new_year, new_month))
+}
+
+fn handle_contribution_modal_key(model: &mut Model, key: KeyEvent) -> Option<Command> {
+    let modal = model.goals_state.contribution_modal.as_mut()?;
+    match key.code {
+        KeyCode::Esc => {
+            model.goals_state.contribution_modal = None;
+            None
+        }
+        KeyCode::Tab | KeyCode::Down => {
+            modal.focused_field = modal.focused_field.next();
+            None
+        }
+        KeyCode::BackTab | KeyCode::Up => {
+            modal.focused_field = modal.focused_field.previous();
+            None
+        }
+        KeyCode::Enter => {
+            let amount_str = modal.amount_input.trim().replace(',', ".");
+            let amount = match Money::parse(&amount_str) {
+                Ok(a) if a.as_decimal() > Decimal::ZERO => a,
+                _ => {
+                    modal.validation_error = Some(
+                        "Valor de aporte inválido ou menor/igual a zero (ex: 250.00)".to_string(),
+                    );
+                    return None;
+                }
+            };
+
+            let date = match NaiveDate::parse_from_str(modal.date_input.trim(), "%Y-%m-%d") {
+                Ok(d) => d,
+                Err(_) => {
+                    modal.validation_error = Some(
+                        "Data inválida. Utilize o formato AAAA-MM-DD (ex: 2026-10-15)".to_string(),
+                    );
+                    return None;
+                }
+            };
+
+            let note = if modal.note_input.trim().is_empty() {
+                None
+            } else {
+                Some(modal.note_input.trim().to_string())
+            };
+
+            let input = AddContributionInput {
+                user_id: UserId::new(Uuid::nil()),
+                goal_identifier: modal.goal_id.to_string(),
+                amount,
+                date,
+                note,
+            };
+
+            model.goals_state.contribution_modal = None;
+            model.is_loading = true;
+            model.status_message = "Registrando aporte na meta...".to_string();
+            Some(Command::AddGoalContribution(input))
+        }
+        KeyCode::Backspace => {
+            modal.validation_error = None;
+            match modal.focused_field {
+                ContributionFormField::Amount => {
+                    modal.amount_input.pop();
+                }
+                ContributionFormField::Date => {
+                    modal.date_input.pop();
+                }
+                ContributionFormField::Note => {
+                    modal.note_input.pop();
+                }
+            }
+            None
+        }
+        KeyCode::Char(c) => {
+            modal.validation_error = None;
+            match modal.focused_field {
+                ContributionFormField::Amount => {
+                    if c.is_ascii_digit() || c == '.' || c == ',' {
+                        modal.amount_input.push(c);
+                    }
+                }
+                ContributionFormField::Date => {
+                    if c.is_ascii_digit() || c == '-' {
+                        modal.date_input.push(c);
+                    }
+                }
+                ContributionFormField::Note => {
+                    modal.note_input.push(c);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+pub fn build_fetch_goals_command(_model: &Model) -> Command {
+    Command::FetchGoalsData
+}
+
+pub fn build_fetch_forecast_command(model: &Model) -> Command {
+    Command::FetchForecastData {
+        months: model.goals_state.forecast_months,
+        granularity: model.goals_state.forecast_granularity,
+        include_goals: model.goals_state.include_goals,
+    }
 }

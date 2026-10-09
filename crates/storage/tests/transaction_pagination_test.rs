@@ -92,6 +92,7 @@ async fn test_transaction_pagination_search_and_batch_actions() {
             offset: Some(0),
             search_description: None,
             deleted: Some(false),
+            all_time: false,
         })
         .await
         .unwrap();
@@ -119,6 +120,7 @@ async fn test_transaction_pagination_search_and_batch_actions() {
             offset: Some(15),
             search_description: None,
             deleted: Some(false),
+            all_time: false,
         })
         .await
         .unwrap();
@@ -144,6 +146,7 @@ async fn test_transaction_pagination_search_and_batch_actions() {
             offset: Some(30),
             search_description: None,
             deleted: Some(false),
+            all_time: false,
         })
         .await
         .unwrap();
@@ -169,6 +172,7 @@ async fn test_transaction_pagination_search_and_batch_actions() {
             offset: Some(0),
             search_description: Some("mercado especial".to_string()),
             deleted: Some(false),
+            all_time: false,
         })
         .await
         .unwrap();
@@ -213,6 +217,7 @@ async fn test_transaction_pagination_search_and_batch_actions() {
             offset: Some(0),
             search_description: None,
             deleted: Some(false),
+            all_time: false,
         })
         .await
         .unwrap();

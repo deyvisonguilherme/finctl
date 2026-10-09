@@ -59,14 +59,16 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Testes unitários de renderização/interação (`tui_test.rs`) e teste de integração com PostgreSQL real (`reports_screen_service_test.rs`) cobrindo consistência com os relatórios do backend.
 
 
-### [ ] F6-05 — Ajuda, atalhos e testes de interface
+### [x] F6-05 — Ajuda, atalhos e testes de interface
 - **Depende de:** F6-03, F6-04
 - **Escopo:** painel de ajuda (`?`) com todos os atalhos, barra de status com dicas contextuais, tema claro/escuro configurável, snapshots de tela com `insta` usando `TestBackend`.
 - **Critérios de aceite:**
   - Cada tela tem ao menos um teste de snapshot
   - Todos os atalhos aparecem no painel de ajuda (teste que compara a lista de atalhos registrados com a exibida)
   - A seção de README sobre a TUI inclui o mapa de teclas
-- **Notas:**
+- **Notas:** Implementado sistema completo de temas com `ThemeMode` (Dark/Light) e paleta semântica (`Theme`), alternável dinamicamente em tempo de execução via tecla `t` e configurável na inicialização através de `finctl tui --theme <dark|light>`. Criado módulo canônico de atalhos `shortcuts.rs` com `ShortcutRegistry` categorizado por contexto (*Geral & Navegação*, *Dashboard*, *Lançamentos*, *Modais & Formulários*, *Relatórios*, *Ajuda*). Implementado painel modal de ajuda sobreposto (`?`) com rolagem vertical (`j`/`k`/setas) e fechamento com `?` ou `Esc`. Implementada barra de rodapé com atalhos contextuais dinâmicos conforme tela, modal ou busca ativa, além de status e erros de conexão. Adicionada seção completa no `README.md` detalhando o uso da TUI e tabela com o mapa integral de teclas. Suíte de testes expandida com teste unitário validando que 100% dos atalhos registrados no `ShortcutRegistry` aparecem no painel de ajuda, testes de ciclo de vida/navegação do modal e temas, e 8 testes de snapshot com `insta` em resolução 80×24 com relógio determinístico cobrindo todas as telas e variantes visuais (Dashboard, Lançamentos em tabela e modal, Relatórios por categorias, evolução e comparativo, Ajuda e Tema Claro).
+
+
 
 ### [ ] F6-09 — Comando de início: escolher TUI ou linha de comando
 - **Depende de:** F6-01
@@ -89,7 +91,7 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
 
 ## Trilha B — Metas de economia e projeção de fluxo de caixa
 
-### [ ] F6-06 — Metas de economia
+### [x] F6-06 — Metas de economia
 - **Depende de:** G-02
 - **Escopo:** migrations `goals` (nome, valor alvo, data alvo opcional, conta vinculada opcional) e `goal_contributions` (meta, valor, data, nota). Comandos `goal add|list|show|contribute|edit|rm`. Progresso conforme D-07: saldo da conta vinculada ou soma dos aportes. `goal show` exibe percentual, valor que falta, aporte mensal necessário até a data alvo e data estimada de conclusão com base na média de aportes dos últimos 3 meses.
 - **Critérios de aceite:**
@@ -97,9 +99,9 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Meta atingida é marcada como concluída e some do `goal list` padrão (visível com `--all`)
   - Média de aportes sem histórico suficiente mostra `n/d`, sem erro
   - Testes cobrem meta vinculada a conta e meta com aportes manuais
-- **Notas:**
+- **Notas:** Implementada migration `20261001040000_create_goals.sql` com tabelas `goals` e `goal_contributions`, triggers de auditoria para `audit_log`, soft delete (`deleted_at`) e índices de unicidade parcial ativa por usuário. Domínio implementado com suporte a `Goal`, `GoalContribution`, `GoalProgress`, cálculo de aporte necessário e estimativa com regra D-05 (`add_months`). Subcomandos `finctl goal add|list|show|contribute|edit|rm` suportam formatos `table`, `json` e `csv`. Aportes manuais em metas vinculadas a conta bancária são bloqueados com erro de validação (código 1). Metas que atingem o alvo são automaticamente marcadas como concluídas e ocultadas da listagem padrão (a menos que `--all` seja informado). Reabertura suportada via `goal edit --reopen`.
 
-### [ ] F6-07 — Projeção de fluxo de caixa
+### [x] F6-07 — Projeção de fluxo de caixa
 - **Depende de:** G-02
 - **Escopo:** `finctl forecast [--months N] [--account X] [--granularity week|month]` projeta o saldo futuro a partir do saldo atual somando: lançamentos `pending`, ocorrências futuras das regras recorrentes ainda não geradas (apenas após `last_generated_date`, sem duplicar as já materializadas), parcelas futuras e faturas de cartão no vencimento (D-08). Destaca o primeiro período em que o saldo projetado fica negativo.
 - **Critérios de aceite:**
@@ -107,15 +109,15 @@ Apenas dois itens desta fase foram detalhados: **TUI com `ratatui`** e **Metas d
   - Compra no cartão sai na data de vencimento da fatura, e não na data da compra
   - Transferências entre contas próprias não alteram o saldo total projetado
   - Suporta `--format table|json|csv`
-- **Notas:**
+- **Notas:** Implementado domínio `ForecastGranularity`, `ForecastPeriod`, `CashflowForecast` e `generate_forecast_intervals` em `crates/domain/src/forecast.rs`. Implementado `ForecastService` em `crates/app/src/services/forecast_service.rs` projetando o fluxo de caixa a partir do saldo realizado (`paid`) e aplicando lançamentos `pending`, parcelas futuras desmembradas, regras recorrentes após `last_generated_date` e regime de caixa para cartões (regra D-08, onde compras do cartão têm saída de caixa alocada na data de vencimento da fatura correspondente). Transferências entre contas próprias se anulam na visão consolidada global. O comando `finctl forecast` suporta os formatos `table`, `json` e `csv`, destacando visualmente em vermelho e com alerta `⚠️` o primeiro período em que o saldo projetado fica negativo.
 
-### [ ] F6-08 — Metas e projeção na TUI
+### [x] F6-08 — Metas e projeção na TUI
 - **Depende de:** F6-02, F6-06, F6-07
 - **Escopo:** tela de metas (barra de progresso, aporte necessário, registrar aporte) e tela de projeção (linha do saldo futuro com marcação do período negativo); aportes planejados de metas entram na projeção como saída opcional (`--include-goals`).
 - **Critérios de aceite:**
   - Valores iguais aos de `goal show` e `forecast`
   - Com `--include-goals`, o aporte mensal necessário reduz o saldo projetado, sem contagem dupla com aportes já registrados
-- **Notas:**
+- **Notas:** Implementada a 5ª aba na TUI (`Metas`) com duas sub-visões acessíveis via teclas `1` e `2`: (1) Visão de Metas exibindo lista com medidores visuais de progresso (Gauge com cores por faixa percentual), detalhes completos da meta selecionada (alvo, atual, restante, percentual, data alvo, aporte mensal necessário e média recente de aportes calculada), e modal interativo sobreposto para registrar aportes manuais diretamente com atalhos `c`/`a`; (2) Visão de Projeção exibindo Sparkline visual do fluxo de caixa projetado, destaque do primeiro período negativo com alerta `⚠️`, tabela com abertura, receitas, despesas, variação e saldo final de cada período, controles de granularidade (`w`/`m`), horizonte (`+`/`-`) e alternância de simulação de metas (`g`). No backend e CLI, adicionada flag `--include-goals` em `finctl forecast`, deduzindo com precisão os aportes mensais necessários das metas ativas sem duplicidade com aportes manuais ou saldos já acumulados. Cobertura de testes unitários, testes de integração e testes visuais de snapshot ratatui implementados e passando 100%.
 
 ---
 

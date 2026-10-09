@@ -5,6 +5,8 @@ pub mod budget;
 pub mod card_invoice;
 pub mod category;
 pub mod errors;
+pub mod forecast;
+pub mod goal;
 pub mod money;
 pub mod recurring;
 pub mod report;
@@ -22,6 +24,10 @@ pub use card_invoice::{
 };
 pub use category::Category;
 pub use errors::DomainError;
+pub use forecast::{
+    generate_forecast_intervals, CashflowForecast, ForecastGranularity, ForecastPeriod,
+};
+pub use goal::{add_months, months_difference, Goal, GoalContribution, GoalProgress, GoalStatus};
 pub use money::{format_decimal_pt_br, Money};
 pub use recurring::RecurringRule;
 pub use report::{
@@ -31,7 +37,7 @@ pub use report::{
 pub use tag::{Tag, TagWithUsage};
 pub use transaction::{calculate_installment_dates, split_installments, Transaction};
 pub use types::{
-    AccountId, AccountKind, AttachmentId, BudgetId, CardInvoiceId, CategoryId, InvoiceStatus,
-    RecurringFrequency, RecurringRuleId, TagId, TransactionId, TransactionKind, TransactionStatus,
-    UserId,
+    AccountId, AccountKind, AttachmentId, BudgetId, CardInvoiceId, CategoryId, ContributionId,
+    GoalId, InvoiceStatus, RecurringFrequency, RecurringRuleId, TagId, TransactionId,
+    TransactionKind, TransactionStatus, UserId,
 };

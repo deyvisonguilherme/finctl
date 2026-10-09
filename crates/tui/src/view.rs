@@ -1,9 +1,14 @@
 use crate::model::{
-    DeleteConfirmState, FilterField, FilterModalState, FormField, FormMode, Model,
-    PeriodModalState, ReportSubView, Tab, TransactionFormState,
+    ContributionFormField, ContributionModalState, DeleteConfirmState, FilterField,
+    FilterModalState, FormField, FormMode, GoalsSubView, Model, PeriodModalState, ReportSubView,
+    Tab, TransactionFormState,
 };
+use crate::shortcuts::{ShortcutCategory, ShortcutRegistry};
 use app::{DashboardData, UpcomingKind};
-use domain::{format_decimal_pt_br, BudgetIndicator, TransactionKind, TransactionStatus};
+use domain::{
+    format_decimal_pt_br, BudgetIndicator, ForecastGranularity, GoalProgress, TransactionKind,
+    TransactionStatus,
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -33,19 +38,27 @@ pub fn view(model: &Model, frame: &mut Frame) {
     render_header(model, frame, chunks[0]);
     render_main(model, frame, chunks[1]);
     render_footer(model, frame, chunks[2]);
+
+    // Modal de Ajuda sobreposto sobre a área de conteúdo
+    if model.is_help_open {
+        render_help_modal(model, frame, chunks[1]);
+    }
 }
 
 fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
+    let theme = model.theme;
     let clock_str = model.last_tick.format("%d/%m/%Y %H:%M:%S").to_string();
     let status_indicator = if model.error_message.is_some() {
         Span::styled(
             " [Erro de Conexão]",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.danger)
+                .add_modifier(Modifier::BOLD),
         )
     } else if model.is_loading {
-        Span::styled(" [Sincronizando...]", Style::default().fg(Color::Yellow))
+        Span::styled(" [Sincronizando...]", Style::default().fg(theme.warning))
     } else {
-        Span::styled(" [Online]", Style::default().fg(Color::Green))
+        Span::styled(" [Online]", Style::default().fg(theme.success))
     };
 
     let title_desc = if area.width < 90 {
@@ -58,8 +71,8 @@ fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
         Span::styled(
             " finctl ",
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
+                .fg(theme.header_fg)
+                .bg(theme.header_bg)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(title_desc),
@@ -67,13 +80,13 @@ fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
     ]);
 
     let clock_line = Line::from(vec![
-        Span::styled(clock_str, Style::default().fg(Color::DarkGray)),
+        Span::styled(clock_str, Style::default().fg(theme.fg_muted)),
         Span::raw(" "),
     ]);
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+        .border_style(Style::default().fg(theme.border));
 
     let header_layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -90,6 +103,7 @@ fn render_header(model: &Model, frame: &mut Frame, area: Rect) {
 }
 
 fn render_main(model: &Model, frame: &mut Frame, area: Rect) {
+    let theme = model.theme;
     // Dividir a área principal em: Barra de Abas (altura 3) e Área de Visualização (restante)
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -101,13 +115,18 @@ fn render_main(model: &Model, frame: &mut Frame, area: Rect) {
 
     let tabs = Tabs::new(tab_titles)
         .select(model.active_tab.index())
-        .block(Block::default().borders(Borders::ALL).title(" Navegação "))
-        .style(Style::default().fg(Color::White))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Navegação ")
+                .border_style(Style::default().fg(theme.border)),
+        )
+        .style(Style::default().fg(theme.tab_inactive_fg))
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.tab_active_fg)
                 .add_modifier(Modifier::BOLD)
-                .bg(Color::DarkGray),
+                .bg(theme.tab_active_bg),
         );
 
     frame.render_widget(tabs, main_chunks[0]);
@@ -211,9 +230,16 @@ fn render_dashboard_grid(data: &DashboardData, frame: &mut Frame, area: Rect) {
 }
 
 fn render_accounts_panel(data: &DashboardData, frame: &mut Frame, area: Rect) {
+    let total_accounts = data.balance_report.accounts.len();
+    let title = if total_accounts > 0 {
+        format!(" Saldos por Conta ({total_accounts}) ")
+    } else {
+        " Saldos por Conta ".to_string()
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Saldos por Conta ")
+        .title(title)
         .border_style(Style::default().fg(Color::Cyan));
 
     let mut lines = Vec::new();
@@ -1742,69 +1768,1107 @@ fn render_budgets_tab(_model: &Model, frame: &mut Frame, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_goals_tab(_model: &Model, frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" 5: Metas de Economia ")
-        .border_style(Style::default().fg(Color::Blue));
+fn render_goals_tab(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.goals_state;
 
-    let text = vec![
-        Line::from(Span::styled(
-            "Metas de Economia e Projeção de Fluxo de Caixa (F6-06 a F6-08)",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(
-            "O acompanhamento de metas com aportes e projeções futuras será implementado em F6-08.",
-        ),
-        Line::from("Navegue de volta para o Dashboard usando a tecla '1' ou Tab."),
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Seletor de subvisões (Metas / Projeção)
+            Constraint::Min(6),    // Conteúdo principal
+        ])
+        .split(area);
+
+    render_goals_subview_tabs(model, frame, chunks[0]);
+
+    match state.active_subview {
+        GoalsSubView::Goals => render_goals_subview(model, frame, chunks[1]),
+        GoalsSubView::Forecast => render_forecast_view(model, frame, chunks[1]),
+    }
+
+    if let Some(ref modal) = state.contribution_modal {
+        render_contribution_modal(modal, frame, area);
+    }
+}
+
+fn render_goals_subview_tabs(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.goals_state;
+    let theme = model.theme;
+
+    let subviews = [
+        ("1: Metas de Economia", GoalsSubView::Goals),
+        ("2: Projeção de Fluxo de Caixa", GoalsSubView::Forecast),
     ];
 
-    let paragraph = Paragraph::new(text).block(block);
-    frame.render_widget(paragraph, area);
+    let titles: Vec<Line> = subviews
+        .iter()
+        .map(|(label, sv)| {
+            if *sv == state.active_subview {
+                Line::from(vec![
+                    Span::styled(" [", Style::default().fg(theme.border_focus)),
+                    Span::styled(
+                        *label,
+                        Style::default()
+                            .fg(theme.tab_active_fg)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled("] ", Style::default().fg(theme.border_focus)),
+                ])
+            } else {
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(*label, Style::default().fg(theme.tab_inactive_fg)),
+                    Span::raw("  "),
+                ])
+            }
+        })
+        .collect();
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Aba 5: Metas e Projeção [Alterne com 1 / 2 ou 'v'] ")
+        .border_style(Style::default().fg(theme.border));
+
+    let tabs = Tabs::new(titles)
+        .block(block)
+        .select(match state.active_subview {
+            GoalsSubView::Goals => 0,
+            GoalsSubView::Forecast => 1,
+        })
+        .style(Style::default().fg(theme.fg_muted))
+        .highlight_style(
+            Style::default()
+                .fg(theme.tab_active_fg)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    frame.render_widget(tabs, area);
+}
+
+fn render_goals_subview(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.goals_state;
+    let theme = model.theme;
+
+    if state.goals.is_empty() {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Metas de Economia ")
+            .border_style(Style::default().fg(theme.border));
+
+        let text = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "Nenhuma meta de economia encontrada.",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from("• Para sincronizar com o banco de dados, pressione 'r'."),
+            Line::from("• Para criar uma nova meta, utilize o CLI: 'finctl goal add --name \"Reserva\" --target 5000'."),
+        ];
+
+        let p = Paragraph::new(text).block(block);
+        frame.render_widget(p, area);
+        return;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(8),    // Lista/Tabela de Metas
+            Constraint::Length(8), // Painel de Detalhes da Meta Selecionada
+        ])
+        .split(area);
+
+    // Tabela de Metas
+    let table_block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(
+            " Metas Cadastradas ({}) [Use j/k para selecionar, c/a para aporte] ",
+            state.goals.len()
+        ))
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let mut table_lines = Vec::new();
+    table_lines.push(Line::from(vec![
+        Span::styled(
+            "   ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Nome               ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Tipo     ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "        Alvo ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "        Atual ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "     Restante ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Progresso       ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "     % ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " Data Alvo  ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "   Aporte Nec. ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Status",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    let visible_rows = chunks[0].height.saturating_sub(3) as usize;
+    let selected_idx = state
+        .selected_goal_index
+        .min(state.goals.len().saturating_sub(1));
+    let start_idx = if visible_rows > 0 && selected_idx >= visible_rows {
+        selected_idx.saturating_sub(visible_rows.saturating_sub(1))
+    } else {
+        0
+    };
+
+    for (i, p) in state
+        .goals
+        .iter()
+        .enumerate()
+        .skip(start_idx)
+        .take(visible_rows.max(1))
+    {
+        let is_selected = i == selected_idx;
+        let prefix = if is_selected { "► " } else { "  " };
+
+        let name = if p.goal.name.chars().count() > 18 {
+            let truncated: String = p.goal.name.chars().take(17).collect();
+            format!("{truncated}…")
+        } else {
+            format!("{:<18}", p.goal.name)
+        };
+
+        let kind = if p.goal.is_account_linked() {
+            "Conta   "
+        } else {
+            "Manual  "
+        };
+
+        let target_str = format!(
+            "{:>12} ",
+            format_decimal_pt_br(p.goal.target_amount.as_decimal())
+        );
+        let current_str = format!(
+            "{:>13} ",
+            format_decimal_pt_br(p.current_amount.as_decimal())
+        );
+        let remaining_str = format!(
+            "{:>13} ",
+            format_decimal_pt_br(p.remaining_amount.as_decimal())
+        );
+
+        let bar = format_progress_bar(p.percentage, 10);
+        let pct_str = format!("{:>6.1}% ", p.percentage);
+
+        let target_date_str = p
+            .goal
+            .target_date
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "    —     ".to_string());
+        let date_col = format!("{:^12}", target_date_str);
+
+        let needed_str = p
+            .monthly_needed
+            .map(|m| format!("{:>12}/mês ", format_decimal_pt_br(m.as_decimal())))
+            .unwrap_or_else(|| "          —     ".to_string());
+
+        let status_color = if p.is_completed {
+            Color::Green
+        } else {
+            Color::Cyan
+        };
+        let status_text = if p.is_completed {
+            "Concluída"
+        } else {
+            "Ativa"
+        };
+
+        let row_style = if is_selected {
+            Style::default()
+                .bg(theme.table_selected_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        table_lines.push(Line::from(vec![
+            Span::styled(prefix, Style::default().fg(Color::Yellow)),
+            Span::styled(format!("{name} "), row_style.fg(theme.fg)),
+            Span::styled(kind, row_style.fg(theme.fg_muted)),
+            Span::styled(target_str, row_style.fg(theme.fg)),
+            Span::styled(current_str, row_style.fg(Color::Green)),
+            Span::styled(
+                remaining_str,
+                row_style.fg(if p.remaining_amount.as_decimal() > Decimal::ZERO {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                }),
+            ),
+            Span::styled(format!("{bar} "), row_style.fg(Color::Cyan)),
+            Span::styled(pct_str, row_style.fg(Color::Cyan)),
+            Span::styled(date_col, row_style.fg(theme.fg_muted)),
+            Span::styled(needed_str, row_style.fg(theme.fg)),
+            Span::styled(status_text, row_style.fg(status_color)),
+        ]));
+    }
+
+    let table_p = Paragraph::new(table_lines).block(table_block);
+    frame.render_widget(table_p, chunks[0]);
+
+    // Painel de Detalhes da Meta Selecionada
+    if let Some(selected_goal) = state.goals.get(selected_idx) {
+        render_goal_details_panel(selected_goal, frame, chunks[1], theme);
+    }
+}
+
+fn render_goal_details_panel(
+    goal_prog: &GoalProgress,
+    frame: &mut Frame,
+    area: Rect,
+    theme: crate::theme::Theme,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Detalhes da Meta Selecionada ")
+        .border_style(Style::default().fg(Color::Green));
+
+    let mut lines = Vec::new();
+
+    let kind_desc = if goal_prog.goal.is_account_linked() {
+        "Conta bancária vinculada (saldo real)"
+    } else {
+        "Aportes manuais (registre com tecla [c] ou [a])"
+    };
+
+    let status_str = if goal_prog.is_completed {
+        "Concluída"
+    } else {
+        "Em andamento (Ativa)"
+    };
+
+    let goal_id_str = goal_prog.goal.id.to_string();
+    let goal_id_short = if goal_id_str.len() >= 8 {
+        &goal_id_str[..8]
+    } else {
+        &goal_id_str
+    };
+
+    lines.push(Line::from(vec![
+        Span::styled(
+            "Meta: ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            &goal_prog.goal.name,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  |  ID: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(goal_id_short, Style::default().fg(theme.fg_muted)),
+        Span::styled("  |  Controle: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(kind_desc, Style::default().fg(Color::Yellow)),
+        Span::styled("  |  Status: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            status_str,
+            Style::default().fg(if goal_prog.is_completed {
+                Color::Green
+            } else {
+                Color::Cyan
+            }),
+        ),
+    ]));
+
+    lines.push(Line::from(vec![
+        Span::styled("Alvo: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            format!(
+                "{}   ",
+                format_decimal_pt_br(goal_prog.goal.target_amount.as_decimal())
+            ),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("Atual: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            format!(
+                "{}   ",
+                format_decimal_pt_br(goal_prog.current_amount.as_decimal())
+            ),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("Restante: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            format!(
+                "{}   ",
+                format_decimal_pt_br(goal_prog.remaining_amount.as_decimal())
+            ),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("Concluído: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            format!("{:.1}%", goal_prog.percentage),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    let target_date_desc = goal_prog
+        .goal
+        .target_date
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "Não definida".to_string());
+
+    let needed_desc = goal_prog
+        .monthly_needed
+        .map(|m| format!("{}/mês", format_decimal_pt_br(m.as_decimal())))
+        .unwrap_or_else(|| "n/d".to_string());
+
+    let rate_desc = goal_prog
+        .recent_monthly_rate
+        .map(|m| format!("{}/mês", format_decimal_pt_br(m.as_decimal())))
+        .unwrap_or_else(|| "Histórico insuficiente (< 30 dias)".to_string());
+
+    let est_desc = goal_prog
+        .estimated_completion_date
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "n/d".to_string());
+
+    lines.push(Line::from(vec![
+        Span::styled("Data Alvo: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            format!("{target_date_desc}   "),
+            Style::default().fg(Color::White),
+        ),
+        Span::styled(
+            "Aporte Mensal Necessário: ",
+            Style::default().fg(theme.fg_muted),
+        ),
+        Span::styled(
+            format!("{needed_desc}   "),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("Média Recente (90d): ", Style::default().fg(theme.fg_muted)),
+        Span::styled(format!("{rate_desc}   "), Style::default().fg(Color::White)),
+        Span::styled("Estimativa: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(est_desc, Style::default().fg(Color::Cyan)),
+    ]));
+
+    let action_hint = if !goal_prog.goal.is_account_linked() && !goal_prog.is_completed {
+        "Pressione [c] ou [a] para registrar aporte manual  |  [2] Projeção de Fluxo de Caixa"
+    } else if goal_prog.is_completed {
+        "Meta concluída! Parabéns!  |  [2] Projeção de Fluxo de Caixa"
+    } else {
+        "Meta vinculada: atualizada automaticamente pelo saldo da conta  |  [2] Projeção de Fluxo de Caixa"
+    };
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        action_hint,
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_forecast_view(model: &Model, frame: &mut Frame, area: Rect) {
+    let state = &model.goals_state;
+    let theme = model.theme;
+
+    let forecast = match state.forecast.as_ref() {
+        Some(f) => f,
+        None => {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(" Projeção de Fluxo de Caixa ")
+                .border_style(Style::default().fg(theme.border));
+
+            let text = vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Projeção ainda não carregada.",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from("Pressione 'r' para sincronizar e calcular a projeção de saldo."),
+            ];
+
+            let p = Paragraph::new(text).block(block);
+            frame.render_widget(p, area);
+            return;
+        }
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(8), // KPI & Sparkline
+            Constraint::Min(8),    // Tabela detalhada de períodos
+        ])
+        .split(area);
+
+    // Painel superior: KPI & Gráfico de Saldo Futuro
+    let top_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(62), // Resumo e Indicadores Críticos
+            Constraint::Percentage(38), // Sparkline de Trajetória
+        ])
+        .split(chunks[0]);
+
+    let gran_label = match forecast.granularity {
+        ForecastGranularity::Week => "Semanal",
+        ForecastGranularity::Month => "Mensal",
+    };
+
+    let kpi_block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(
+            " Indicadores da Projeção ({} Meses — {}) ",
+            forecast.months, gran_label
+        ))
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let first_neg = forecast.periods.iter().find(|p| p.is_negative);
+
+    let mut kpi_lines = Vec::new();
+    kpi_lines.push(Line::from(vec![
+        Span::styled("Saldo Inicial Atual: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(
+            format!("{}   ", format_decimal_pt_br(forecast.initial_balance)),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("|  Metas Planejadas: ", Style::default().fg(theme.fg_muted)),
+        if state.include_goals {
+            Span::styled(
+                "[g] ATIVADO (Aportes Deduzidos)",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(
+                "[g] DESATIVADO (Ignorar Metas)",
+                Style::default().fg(Color::Yellow),
+            )
+        },
+    ]));
+
+    if let Some(neg) = first_neg {
+        kpi_lines.push(Line::from(vec![Span::styled(
+            format!(
+                "⚠️  PRIMEIRO PERÍODO NEGATIVO: {} (Saldo Projetado: {})",
+                neg.period_label,
+                format_decimal_pt_br(neg.closing_balance)
+            ),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )]));
+    } else {
+        kpi_lines.push(Line::from(vec![Span::styled(
+            "✅ Saldo projetado permanece POSITIVO em todo o horizonte",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )]));
+    }
+
+    kpi_lines.push(Line::from(""));
+    kpi_lines.push(Line::from(Span::styled(
+        "Atalhos: [g] Alternar Metas  |  [w/m] Granularidade  |  [+/-] Horizonte  |  [j/k] Rolar  |  [r] Recarregar",
+        Style::default().fg(theme.fg_muted),
+    )));
+
+    let kpi_p = Paragraph::new(kpi_lines).block(kpi_block);
+    frame.render_widget(kpi_p, top_chunks[0]);
+
+    // Sparkline de Trajetória do Saldo Projetado
+    let spark_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Trajetória do Saldo Futuro ")
+        .border_style(Style::default().fg(if first_neg.is_some() {
+            Color::Red
+        } else {
+            Color::Green
+        }));
+
+    let min_closing = forecast
+        .periods
+        .iter()
+        .map(|p| p.closing_balance)
+        .min()
+        .unwrap_or(Decimal::ZERO);
+    let shift_offset = if min_closing < Decimal::ZERO {
+        min_closing.abs()
+    } else {
+        Decimal::ZERO
+    };
+
+    let spark_data: Vec<u64> = forecast
+        .periods
+        .iter()
+        .map(|p| {
+            ((p.closing_balance + shift_offset)
+                .to_f64()
+                .unwrap_or(0.0)
+                .max(0.0)
+                .round()) as u64
+        })
+        .collect();
+
+    let sparkline = Sparkline::default()
+        .block(spark_block)
+        .data(&spark_data)
+        .style(Style::default().fg(if first_neg.is_some() {
+            Color::Yellow
+        } else {
+            Color::Green
+        }));
+
+    frame.render_widget(sparkline, top_chunks[1]);
+
+    // Painel inferior: Tabela detalhada dos períodos
+    let table_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Períodos Projetados (Entradas, Saídas e Saldos Futuros) ")
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let mut table_lines = Vec::new();
+    table_lines.push(Line::from(vec![
+        Span::styled(
+            "   ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Período           ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "   Saldo Inicial ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "    Entradas (+) ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "      Saídas (-) ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " Resultado Líquido ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "   Saldo Projetado ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    let visible_rows = chunks[1].height.saturating_sub(3) as usize;
+    let selected_idx = state
+        .forecast_cursor
+        .min(forecast.periods.len().saturating_sub(1));
+    let start_idx = if visible_rows > 0 && selected_idx >= visible_rows {
+        selected_idx.saturating_sub(visible_rows.saturating_sub(1))
+    } else {
+        0
+    };
+
+    let mut first_neg_seen = false;
+
+    for (i, p) in forecast
+        .periods
+        .iter()
+        .enumerate()
+        .skip(start_idx)
+        .take(visible_rows.max(1))
+    {
+        let is_selected = i == selected_idx;
+        let prefix = if is_selected { "► " } else { "  " };
+
+        let period_label = format!("{:<18}", p.period_label);
+        let open_str = format!("{:>16} ", format_decimal_pt_br(p.opening_balance));
+        let inc_str = format!(
+            "{:>16} ",
+            format!("+ {}", format_decimal_pt_br(p.total_income))
+        );
+        let exp_str = format!(
+            "{:>16} ",
+            format!("- {}", format_decimal_pt_br(p.total_expense))
+        );
+
+        let net_prefix = if p.net_change >= Decimal::ZERO {
+            "+"
+        } else {
+            "-"
+        };
+        let net_str = format!(
+            "{:>18} ",
+            format!("{net_prefix} {}", format_decimal_pt_br(p.net_change.abs()))
+        );
+
+        let is_first_neg = !first_neg_seen && p.is_negative;
+        if is_first_neg {
+            first_neg_seen = true;
+        }
+
+        let (closing_str, closing_style) = if is_first_neg {
+            (
+                format!("⚠️  {:>13} ", format_decimal_pt_br(p.closing_balance)),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )
+        } else if p.is_negative {
+            (
+                format!("{:>16} ", format_decimal_pt_br(p.closing_balance)),
+                Style::default().fg(Color::Red),
+            )
+        } else {
+            (
+                format!("{:>16} ", format_decimal_pt_br(p.closing_balance)),
+                Style::default().fg(Color::Green),
+            )
+        };
+
+        let row_style = if is_selected {
+            Style::default()
+                .bg(theme.table_selected_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        let net_color = if p.net_change >= Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+
+        table_lines.push(Line::from(vec![
+            Span::styled(prefix, Style::default().fg(Color::Yellow)),
+            Span::styled(period_label, row_style.fg(theme.fg)),
+            Span::styled(open_str, row_style.fg(theme.fg_muted)),
+            Span::styled(inc_str, row_style.fg(Color::Green)),
+            Span::styled(exp_str, row_style.fg(Color::Red)),
+            Span::styled(net_str, row_style.fg(net_color)),
+            Span::styled(closing_str, row_style.patch(closing_style)),
+        ]));
+    }
+
+    let table_p = Paragraph::new(table_lines).block(table_block);
+    frame.render_widget(table_p, chunks[1]);
+}
+
+fn render_contribution_modal(modal: &ContributionModalState, frame: &mut Frame, area: Rect) {
+    let popup_area = centered_rect(60, 16, area);
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Registrar Aporte Manual ")
+        .border_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled(" Meta Alvo: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            &modal.goal_name,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(""));
+
+    // Campo 1: Valor
+    let is_amount = modal.focused_field == ContributionFormField::Amount;
+    let amount_style = if is_amount {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    lines.push(Line::from(vec![
+        Span::styled(
+            if is_amount { " ► " } else { "   " },
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::styled("Valor (R$): ", Style::default().fg(Color::Cyan)),
+        Span::styled(format!("[ {:<20} ]", modal.amount_input), amount_style),
+    ]));
+
+    // Campo 2: Data
+    let is_date = modal.focused_field == ContributionFormField::Date;
+    let date_style = if is_date {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    lines.push(Line::from(vec![
+        Span::styled(
+            if is_date { " ► " } else { "   " },
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::styled("Data (AAAA-MM-DD): ", Style::default().fg(Color::Cyan)),
+        Span::styled(format!("[ {:<16} ]", modal.date_input), date_style),
+    ]));
+
+    // Campo 3: Observação
+    let is_note = modal.focused_field == ContributionFormField::Note;
+    let note_style = if is_note {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    lines.push(Line::from(vec![
+        Span::styled(
+            if is_note { " ► " } else { "   " },
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::styled("Observação: ", Style::default().fg(Color::Cyan)),
+        Span::styled(format!("[ {:<26} ]", modal.note_input), note_style),
+    ]));
+
+    lines.push(Line::from(""));
+
+    if let Some(ref err) = modal.validation_error {
+        lines.push(Line::from(vec![
+            Span::styled(
+                " ✖ ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                err,
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    } else {
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        " [Tab/↓/↑] Alternar Campo  |  [Enter] Confirmar  |  [Esc] Cancelar ",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let p = Paragraph::new(lines).block(block);
+    frame.render_widget(p, popup_area);
 }
 
 fn render_footer(model: &Model, frame: &mut Frame, area: Rect) {
-    let shortcuts = Line::from(vec![
-        Span::styled(" [q/Ctrl+C] ", Style::default().fg(Color::Yellow)),
-        Span::raw("Sair  "),
-        Span::styled(" [Tab/1-5] ", Style::default().fg(Color::Yellow)),
-        Span::raw("Mudar Aba  "),
-        Span::styled(" [r] ", Style::default().fg(Color::Yellow)),
-        Span::raw("Atualizar  "),
-    ]);
+    let theme = model.theme;
+    let contextual_shortcuts = build_contextual_shortcuts(model);
 
     let status = if let Some(ref err) = model.error_message {
         Line::from(vec![
             Span::styled(
                 "ERRO: ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.danger)
+                    .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(err, Style::default().fg(Color::Red)),
+            Span::styled(err, Style::default().fg(theme.danger)),
             Span::raw(" "),
         ])
     } else {
         Line::from(vec![
-            Span::raw("Status: "),
-            Span::styled(&model.status_message, Style::default().fg(Color::White)),
+            Span::styled("Status: ", Style::default().fg(theme.fg_muted)),
+            Span::styled(&model.status_message, Style::default().fg(theme.fg)),
             Span::raw(" "),
         ])
     };
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme.fg_muted));
 
+    let right_width = 32.min(area.width.saturating_sub(45)).max(24);
     let footer_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(35), Constraint::Length(35)])
+        .constraints([Constraint::Min(45), Constraint::Length(right_width)])
         .split(area);
 
-    let shortcuts_p = Paragraph::new(shortcuts).block(block.clone());
+    let shortcuts_p = Paragraph::new(Line::from(contextual_shortcuts)).block(block.clone());
     let status_p = Paragraph::new(status)
         .alignment(Alignment::Right)
         .block(block);
 
     frame.render_widget(shortcuts_p, footer_layout[0]);
     frame.render_widget(status_p, footer_layout[1]);
+}
+
+fn build_contextual_shortcuts(model: &Model) -> Vec<Span<'static>> {
+    let theme = model.theme;
+    let mut spans = Vec::new();
+
+    let mut push_sc = |key: &'static str, desc: &'static str| {
+        spans.push(Span::styled(
+            format!(" [{key}] "),
+            Style::default()
+                .fg(theme.shortcut_key)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!("{desc} "),
+            Style::default().fg(theme.shortcut_desc),
+        ));
+    };
+
+    if model.is_help_open {
+        push_sc("j/k/Setas", "Rolar");
+        push_sc("?/Esc", "Fechar Ajuda");
+    } else if model.active_tab == Tab::Transactions {
+        if model.transactions_state.delete_confirm.is_some() {
+            push_sc("Enter/s", "Confirmar");
+            push_sc("Esc/n", "Cancelar");
+        } else if model.transactions_state.form_modal.is_some()
+            || model.transactions_state.filter_modal.is_some()
+        {
+            push_sc("Tab/Enter", "Próx");
+            push_sc("Space", "Alternar");
+            push_sc("Esc", "Cancelar");
+        } else if model.transactions_state.is_searching {
+            push_sc("Digitar", "Busca");
+            push_sc("Enter/Esc", "Concluir");
+        } else {
+            push_sc("a", "Novo");
+            push_sc("e", "Edit");
+            push_sc("d", "Excl");
+            push_sc("p", "Pagar");
+            push_sc("Space", "Sel");
+            push_sc("/", "Busca");
+            push_sc("f", "Filtro");
+            push_sc("Tab/1-5", "Mudar Aba");
+        }
+    } else if model.active_tab == Tab::Reports {
+        if model.reports_state.period_modal.is_some() {
+            push_sc("Digitar", "AAAA-MM");
+            push_sc("Enter", "Aplicar");
+            push_sc("Esc", "Cancelar");
+        } else {
+            push_sc("1-3", "Visão");
+            push_sc("[ / ]", "Mês");
+            push_sc("i", "Previstos");
+            push_sc("p", "Período");
+            push_sc("Tab/1-5", "Mudar Aba");
+        }
+    } else if model.active_tab == Tab::Goals {
+        if model.goals_state.contribution_modal.is_some() {
+            push_sc("Tab/↓/↑", "Campos");
+            push_sc("Enter", "Confirmar");
+            push_sc("Esc", "Cancelar");
+        } else {
+            push_sc("1/2", "Visão");
+            match model.goals_state.active_subview {
+                GoalsSubView::Goals => {
+                    push_sc("c/a", "Aporte");
+                    push_sc("j/k", "Navegar");
+                }
+                GoalsSubView::Forecast => {
+                    push_sc("g", "Metas");
+                    push_sc("w/m", "Sem/Mês");
+                    push_sc("+/-", "Horizonte");
+                    push_sc("j/k", "Navegar");
+                }
+            }
+            push_sc("r", "Atualizar");
+            push_sc("Tab/1-5", "Mudar Aba");
+        }
+    } else {
+        // Dashboard ou abas gerais
+        push_sc("q", "Sair");
+        push_sc("Tab/1-5", "Abas");
+        push_sc("r", "Atualizar");
+        push_sc("t", "Tema");
+        push_sc("?", "Ajuda");
+    }
+
+    spans
+}
+
+pub fn build_help_lines(model: &Model) -> Vec<Line<'static>> {
+    let theme = model.theme;
+    let mut lines = Vec::new();
+
+    lines.push(Line::from(vec![Span::styled(
+        "  MAPA COMPLETO DE ATALHOS DE TECLADO  ",
+        Style::default()
+            .fg(theme.header_fg)
+            .bg(theme.header_bg)
+            .add_modifier(Modifier::BOLD),
+    )]));
+    lines.push(Line::from(""));
+
+    for category in ShortcutCategory::ALL {
+        let shortcuts = ShortcutRegistry::by_category(category);
+        if shortcuts.is_empty() {
+            continue;
+        }
+
+        lines.push(Line::from(vec![Span::styled(
+            format!("── {} ──", category.title()),
+            Style::default()
+                .fg(theme.border_focus)
+                .add_modifier(Modifier::BOLD),
+        )]));
+
+        for sc in shortcuts {
+            let key_str = format!("  {:18} ", sc.key);
+            lines.push(Line::from(vec![
+                Span::styled(
+                    key_str,
+                    Style::default()
+                        .fg(theme.shortcut_key)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(sc.description, Style::default().fg(theme.shortcut_desc)),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled(
+            "Dica: ",
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Pressione 't' para alternar o tema (Claro/Escuro). Pressione '?' ou 'Esc' para fechar.",
+            Style::default().fg(theme.fg_muted),
+        ),
+    ]));
+
+    lines
+}
+
+pub fn generate_help_text(model: &Model) -> String {
+    let lines = build_help_lines(model);
+    let mut result = String::new();
+    for line in lines {
+        for span in line.spans {
+            result.push_str(&span.content);
+        }
+        result.push('\n');
+    }
+    result
+}
+
+pub fn render_help_modal(model: &Model, frame: &mut Frame, area: Rect) {
+    let theme = model.theme;
+
+    // Dimensões do modal de ajuda: centralizado
+    let modal_width = (area.width.saturating_sub(4)).clamp(20, 78);
+    let modal_height = (area.height.saturating_sub(2)).clamp(10, 100);
+
+    let popup_area = Rect {
+        x: area.x + (area.width.saturating_sub(modal_width)) / 2,
+        y: area.y + (area.height.saturating_sub(modal_height)) / 2,
+        width: modal_width,
+        height: modal_height,
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Ajuda & Mapa de Atalhos [?] ")
+        .border_style(Style::default().fg(theme.modal_border));
+
+    let help_lines = build_help_lines(model);
+    let inner_height = popup_area.height.saturating_sub(2) as usize;
+    let max_scroll = help_lines.len().saturating_sub(inner_height);
+    let scroll_y = model.help_scroll.min(max_scroll);
+
+    let paragraph = Paragraph::new(help_lines)
+        .block(block)
+        .scroll((scroll_y as u16, 0));
+
+    frame.render_widget(paragraph, popup_area);
 }

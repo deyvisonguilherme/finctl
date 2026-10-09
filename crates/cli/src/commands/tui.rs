@@ -7,10 +7,18 @@ pub async fn handle_tui_command(
     pool: &PgPool,
     user_id: UserId,
 ) -> Result<(), (String, u8)> {
-    // 1. Instalar hook de pânico para restaurar terminal em caso de crash
+    // 1. Garantir que o banco de dados está atualizado com as últimas migrações
+    storage::run_migrations(pool).await.map_err(|e| {
+        (
+            format!("Falha ao aplicar migrações do banco de dados: {e}"),
+            2,
+        )
+    })?;
+
+    // 2. Instalar hook de pânico para restaurar terminal em caso de crash
     tui::install_panic_hook();
 
-    // 2. Inicializar o terminal no modo raw com tela alternada
+    // 3. Inicializar o terminal no modo raw com tela alternada
     let mut terminal = tui::init_terminal()
         .map_err(|e| (format!("Falha ao inicializar terminal da TUI: {e}"), 2))?;
 
@@ -159,6 +167,70 @@ pub async fn handle_tui_command(
                         }
                     }
                 }
+                tui::Command::FetchGoalsData => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let goal_service = app::GoalService::new(&pool_clone);
+                    match goal_service.list_goals(user_id, true).await {
+                        Ok(goals) => {
+                            let _ = msg_tx.send(tui::Message::GoalsDataLoaded(goals)).await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::FetchForecastData {
+                    months,
+                    granularity,
+                    include_goals,
+                } => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    let forecast_service = app::ForecastService::new(&pool_clone);
+                    match forecast_service
+                        .generate_forecast(app::ForecastInput {
+                            user_id,
+                            months: Some(months),
+                            account_query: None,
+                            granularity: Some(granularity),
+                            as_of_date: None,
+                            include_goals,
+                        })
+                        .await
+                    {
+                        Ok(data) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ForecastDataLoaded(Box::new(data)))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
+                tui::Command::AddGoalContribution(mut input) => {
+                    let _ = msg_tx.send(tui::Message::SetLoading(true)).await;
+                    input.user_id = user_id;
+                    let goal_service = app::GoalService::new(&pool_clone);
+                    match goal_service.add_contribution(input).await {
+                        Ok(contrib) => {
+                            let _ = msg_tx
+                                .send(tui::Message::GoalContributionSuccess(format!(
+                                    "Aporte de R$ {} registrado com sucesso!",
+                                    domain::format_decimal_pt_br(contrib.amount.as_decimal())
+                                )))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = msg_tx
+                                .send(tui::Message::ErrorOccurred(err.to_string()))
+                                .await;
+                        }
+                    }
+                }
                 tui::Command::Custom(s) => {
                     let _ = msg_tx.send(tui::Message::StatusMessage(s)).await;
                 }
@@ -167,7 +239,11 @@ pub async fn handle_tui_command(
     });
 
     // 5. Executar o ciclo de eventos da TUI
-    let model = tui::Model::new();
+    let theme_mode = match _args.theme.as_str() {
+        "light" => tui::ThemeMode::Light,
+        _ => tui::ThemeMode::Dark,
+    };
+    let model = tui::Model::new_with_theme(theme_mode);
     let run_res = tui::run_tui(&mut terminal, model, Some(cmd_tx), Some(msg_rx)).await;
 
     // 6. Restaurar o terminal original

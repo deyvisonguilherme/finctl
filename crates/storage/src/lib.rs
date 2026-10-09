@@ -13,7 +13,7 @@ pub use errors::StorageError;
 pub use repositories::{
     AccountRepository, AttachmentRepository, AuditFilter, AuditRepository, BudgetDetails,
     BudgetRepository, CardInvoiceRepository, CategoryCompareFilter, CategoryReportFilter,
-    CategoryRepository, MonthlyReportFilter, PurgeSummary, RecurringRepository,
+    CategoryRepository, GoalRepository, MonthlyReportFilter, PurgeSummary, RecurringRepository,
     RecurringRuleDetails, ReportRepository, TagRepository, TransactionDetails, TransactionFilter,
     TransactionRepository,
 };

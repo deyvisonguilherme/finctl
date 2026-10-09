@@ -6,15 +6,15 @@ use chrono::{NaiveDate, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use domain::{
     AccountId, AccountKind, BudgetIndicator, CategoryComparisonReport, CategoryComparisonRow,
-    CategoryId, CategoryReportItem, CategoryReportSummary, Money, MonthlyReportItem, TransactionId,
-    TransactionKind, TransactionStatus, UserId,
+    CategoryId, CategoryReportItem, CategoryReportSummary, GoalId, Money, MonthlyReportItem,
+    TransactionId, TransactionKind, TransactionStatus, UserId,
 };
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use rust_decimal_macros::dec;
 use tui::{
-    install_panic_hook, restore_terminal, run_tui, update, view, Command, Message, Model,
-    ReportSubView, Tab,
+    generate_help_text, install_panic_hook, restore_terminal, run_tui, update, view, Command,
+    GoalsSubView, Message, Model, ReportSubView, ShortcutRegistry, Tab, Theme, ThemeMode,
 };
 
 fn buffer_to_string(terminal: &Terminal<TestBackend>) -> String {
@@ -992,4 +992,662 @@ fn test_reports_navigation_month_and_pending_toggle_and_period_modal() {
     }
     assert!(model.reports_state.period_modal.is_none());
     assert_eq!(model.reports_state.reference_month, "2026-03");
+}
+
+fn set_deterministic_clock(model: &mut Model) {
+    let naive = NaiveDate::from_ymd_opt(2026, 10, 8)
+        .unwrap()
+        .and_hms_opt(12, 0, 0)
+        .unwrap();
+    model.last_tick =
+        chrono::DateTime::from_naive_utc_and_offset(naive, *chrono::Local::now().offset());
+}
+
+fn create_mock_dashboard_model() -> Model {
+    let mut model = Model::new();
+    let data = DashboardData {
+        balance_report: BalanceReport {
+            as_of_date: None,
+            projected: false,
+            accounts: vec![
+                AccountBalance {
+                    account_id: AccountId::generate(),
+                    account_name: "Nubank".to_string(),
+                    account_kind: AccountKind::Checking,
+                    initial_balance: Money::from_decimal_non_negative(dec!(1000.00)).unwrap(),
+                    total_income: Money::from_decimal_non_negative(dec!(2000.00)).unwrap(),
+                    total_expense: Money::from_decimal_non_negative(dec!(500.00)).unwrap(),
+                    current_balance: dec!(2500.00),
+                },
+                AccountBalance {
+                    account_id: AccountId::generate(),
+                    account_name: "Carteira".to_string(),
+                    account_kind: AccountKind::Wallet,
+                    initial_balance: Money::from_decimal_non_negative(dec!(50.00)).unwrap(),
+                    total_income: Money::from_decimal_non_negative(dec!(100.00)).unwrap(),
+                    total_expense: Money::from_decimal_non_negative(dec!(0.00)).unwrap(),
+                    current_balance: dec!(150.00),
+                },
+            ],
+            total_initial_balance: dec!(1050.00),
+            total_income: dec!(2100.00),
+            total_expense: dec!(500.00),
+            total_balance: dec!(2650.00),
+        },
+        monthly_summary: MonthlySummary {
+            month: "2026-10".to_string(),
+            total_income: Money::from_decimal_non_negative(dec!(4000.00)).unwrap(),
+            total_expense: Money::from_decimal_non_negative(dec!(1800.00)).unwrap(),
+            net_balance: dec!(2200.00),
+            savings_rate: dec!(55.0),
+        },
+        budget_statuses: vec![CategoryBudgetStatus {
+            category_id: CategoryId::generate(),
+            category_name: "Alimentação".to_string(),
+            budget_amount: Money::from_decimal_non_negative(dec!(1000.00)).unwrap(),
+            consumed_amount: Money::from_decimal_non_negative(dec!(750.00)).unwrap(),
+            remaining_amount: dec!(250.00),
+            percentage: dec!(75.0),
+            indicator: BudgetIndicator::Ok,
+            is_monthly_exception: false,
+        }],
+        upcoming_items: vec![
+            UpcomingDueItem {
+                due_date: NaiveDate::from_ymd_opt(2026, 10, 20).unwrap(),
+                description: "Internet Fibra".to_string(),
+                amount: Money::from_decimal_non_negative(dec!(120.00)).unwrap(),
+                kind: UpcomingKind::Expense,
+                is_overdue: false,
+                account_name: Some("Nubank".to_string()),
+            },
+            UpcomingDueItem {
+                due_date: NaiveDate::from_ymd_opt(2026, 10, 5).unwrap(),
+                description: "Energia Elétrica".to_string(),
+                amount: Money::from_decimal_non_negative(dec!(230.00)).unwrap(),
+                kind: UpcomingKind::Expense,
+                is_overdue: true,
+                account_name: Some("Nubank".to_string()),
+            },
+        ],
+    };
+    model.dashboard_data = Some(data);
+    model
+}
+
+fn create_mock_transactions_model() -> Model {
+    let mut model = Model::new();
+    model.active_tab = Tab::Transactions;
+    let tx1 = sample_transaction(
+        "Supermercado",
+        Money::from_decimal_non_negative(dec!(150.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Paid,
+    );
+    let tx2 = sample_transaction(
+        "Salário Mensal",
+        Money::from_decimal_non_negative(dec!(3500.00)).unwrap(),
+        TransactionKind::Income,
+        TransactionStatus::Paid,
+    );
+    let tx3 = sample_transaction(
+        "Conta de Luz",
+        Money::from_decimal_non_negative(dec!(120.00)).unwrap(),
+        TransactionKind::Expense,
+        TransactionStatus::Pending,
+    );
+    let paginated = PaginatedTransactions {
+        items: vec![tx1, tx2, tx3],
+        total_count: 3,
+        page: 1,
+        page_size: 15,
+        total_pages: 1,
+    };
+    model.transactions_state.items = paginated.items;
+    model.transactions_state.total_count = paginated.total_count;
+    model.transactions_state.page = paginated.page;
+    model.transactions_state.page_size = paginated.page_size;
+    model.transactions_state.total_pages = paginated.total_pages;
+    model
+}
+
+fn create_mock_reports_model(subview: ReportSubView) -> Model {
+    let mut model = Model::new();
+    model.active_tab = Tab::Reports;
+    model.reports_state.active_subview = subview;
+    model.reports_state.reference_month = "2026-10".to_string();
+    model.reports_state.data = Some(sample_reports_data());
+    model
+}
+
+#[test]
+fn test_all_shortcuts_appear_in_help_panel() {
+    let mut model = Model::new();
+    model.is_help_open = true;
+
+    // 1. Validar que cada atalho registrado aparece no texto gerado para a tela de ajuda
+    let all_shortcuts = ShortcutRegistry::all();
+    let help_text = generate_help_text(&model);
+
+    for sc in &all_shortcuts {
+        assert!(
+            help_text.contains(sc.key),
+            "A tecla '{}' deve estar presente no texto do painel de ajuda",
+            sc.key
+        );
+        assert!(
+            help_text.contains(sc.description),
+            "A descrição '{}' deve estar presente no texto do painel de ajuda",
+            sc.description
+        );
+    }
+
+    // 2. Renderizar no TestBackend com altura suficiente (100x75) para garantir desenho visual no buffer
+    let backend = TestBackend::new(100, 75);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal de teste");
+
+    terminal
+        .draw(|f| view(&model, f))
+        .expect("Deve renderizar view");
+    let buffer_text = buffer_to_string(&terminal);
+
+    for sc in &all_shortcuts {
+        assert!(
+            buffer_text.contains(sc.key),
+            "Buffer do terminal deve conter a tecla '{}'",
+            sc.key
+        );
+    }
+}
+
+#[test]
+fn test_help_modal_lifecycle_navigation_and_closing() {
+    let mut model = Model::new();
+    assert!(!model.is_help_open);
+
+    // 1. Abrir com tecla '?'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE)),
+    );
+    assert!(model.is_help_open);
+    assert_eq!(model.help_scroll, 0);
+
+    // 2. Rolar para baixo com 'j'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.help_scroll, 1);
+
+    // 3. Rolar para cima com 'k'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.help_scroll, 0);
+
+    // 4. Fechar com 'Esc'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+    );
+    assert!(!model.is_help_open);
+
+    // 5. Reabrir com ToggleHelp e fechar com '?'
+    let _ = update(&mut model, Message::ToggleHelp);
+    assert!(model.is_help_open);
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE)),
+    );
+    assert!(!model.is_help_open);
+}
+
+#[test]
+fn test_theme_toggle_and_shortcuts() {
+    let mut model = Model::new();
+    assert_eq!(model.theme.mode, ThemeMode::Dark);
+
+    // 1. Alternar tema com tecla 't'
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.theme.mode, ThemeMode::Light);
+    assert!(model.status_message.contains("Claro"));
+
+    // 2. Alternar de volta com mensagem ToggleTheme
+    let _ = update(&mut model, Message::ToggleTheme);
+    assert_eq!(model.theme.mode, ThemeMode::Dark);
+    assert!(model.status_message.contains("Escuro"));
+
+    // 3. Definir tema explicitamente
+    let _ = update(&mut model, Message::SetTheme(ThemeMode::Light));
+    assert_eq!(model.theme.mode, ThemeMode::Light);
+}
+
+#[test]
+fn test_contextual_footer_tips_per_tab_and_modal() {
+    let mut model = Model::new();
+    let backend = TestBackend::new(100, 25);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal de teste");
+
+    // Dashboard
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Tab/1-5") || text.contains("Mudar Aba"));
+    assert!(text.contains("Atualizar"));
+    assert!(text.contains("Ajuda"));
+
+    // Lançamentos
+    model.active_tab = Tab::Transactions;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Novo"));
+    assert!(text.contains("Edit"));
+    assert!(text.contains("Excl"));
+    assert!(text.contains("Pagar"));
+
+    // Lançamentos com busca ativa
+    model.transactions_state.is_searching = true;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Busca") || text.contains("Digitar"));
+
+    // Relatórios
+    model.transactions_state.is_searching = false;
+    model.active_tab = Tab::Reports;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Visão") || text.contains("Mês"));
+
+    // Ajuda aberta
+    model.is_help_open = true;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let text = buffer_to_string(&terminal);
+    assert!(text.contains("Rolar"));
+    assert!(text.contains("Fechar Ajuda"));
+}
+
+#[test]
+fn test_snapshot_dashboard() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_dashboard_model();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("dashboard_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_transactions_table() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_transactions_model();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("transactions_table_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_transactions_add_modal() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_transactions_model();
+    set_deterministic_clock(&mut model);
+    // Abrir modal de criação
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+    );
+    if let Some(ref mut form) = model.transactions_state.form_modal {
+        form.date_input = "2026-10-08".to_string();
+    }
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("transactions_modal_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_reports_categories() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_reports_model(ReportSubView::Categories);
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("reports_categories_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_reports_evolution() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_reports_model(ReportSubView::MonthlyEvolution);
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("reports_evolution_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_reports_comparison() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_reports_model(ReportSubView::Comparison);
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("reports_comparison_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_help_modal() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_dashboard_model();
+    set_deterministic_clock(&mut model);
+    model.is_help_open = true;
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("help_modal_80x24", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_light_theme() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_dashboard_model();
+    model.theme = Theme::light();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("light_theme_80x24", buffer_to_string(&terminal));
+}
+
+fn create_mock_goals_model() -> Model {
+    let mut model = Model::new();
+    model.active_tab = Tab::Goals;
+    model.goals_state.active_subview = GoalsSubView::Goals;
+
+    let user_id = UserId::generate();
+    let mut goal1 = domain::Goal::new(
+        user_id,
+        "Reserva de Emergência".to_string(),
+        Money::from_decimal_non_negative(dec!(10000.00)).unwrap(),
+        Some(NaiveDate::from_ymd_opt(2027, 10, 1).unwrap()),
+        None,
+    )
+    .unwrap();
+    goal1.id = GoalId::new(uuid::uuid!("11111111-1111-1111-1111-111111111111"));
+    let p1 = domain::GoalProgress::calculate(
+        goal1,
+        Money::from_decimal_non_negative(dec!(6000.00)).unwrap(),
+        Some(Money::from_decimal_non_negative(dec!(500.00)).unwrap()),
+        NaiveDate::from_ymd_opt(2026, 10, 8).unwrap(),
+        vec![],
+    );
+
+    let mut goal2 = domain::Goal::new(
+        user_id,
+        "Viagem de Férias".to_string(),
+        Money::from_decimal_non_negative(dec!(5000.00)).unwrap(),
+        Some(NaiveDate::from_ymd_opt(2027, 2, 1).unwrap()),
+        Some(AccountId::generate()),
+    )
+    .unwrap();
+    goal2.id = GoalId::new(uuid::uuid!("22222222-2222-2222-2222-222222222222"));
+    let p2 = domain::GoalProgress::calculate(
+        goal2,
+        Money::from_decimal_non_negative(dec!(2500.00)).unwrap(),
+        None,
+        NaiveDate::from_ymd_opt(2026, 10, 8).unwrap(),
+        vec![],
+    );
+
+    model.goals_state.goals = vec![p1, p2];
+    model
+}
+
+fn create_mock_forecast_model() -> Model {
+    let mut model = Model::new();
+    model.active_tab = Tab::Goals;
+    model.goals_state.active_subview = GoalsSubView::Forecast;
+
+    let period1 = domain::ForecastPeriod {
+        period_label: "2026-11".to_string(),
+        start_date: NaiveDate::from_ymd_opt(2026, 11, 1).unwrap(),
+        end_date: NaiveDate::from_ymd_opt(2026, 11, 30).unwrap(),
+        opening_balance: dec!(2000.00),
+        total_income: dec!(3500.00),
+        total_expense: dec!(2500.00),
+        net_change: dec!(1000.00),
+        closing_balance: dec!(3000.00),
+        is_negative: false,
+    };
+    let period2 = domain::ForecastPeriod {
+        period_label: "2026-12".to_string(),
+        start_date: NaiveDate::from_ymd_opt(2026, 12, 1).unwrap(),
+        end_date: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
+        opening_balance: dec!(3000.00),
+        total_income: dec!(1000.00),
+        total_expense: dec!(4500.00),
+        net_change: dec!(-3500.00),
+        closing_balance: dec!(-500.00),
+        is_negative: true,
+    };
+    let period3 = domain::ForecastPeriod {
+        period_label: "2027-01".to_string(),
+        start_date: NaiveDate::from_ymd_opt(2027, 1, 1).unwrap(),
+        end_date: NaiveDate::from_ymd_opt(2027, 1, 31).unwrap(),
+        opening_balance: dec!(-500.00),
+        total_income: dec!(3500.00),
+        total_expense: dec!(2000.00),
+        net_change: dec!(1500.00),
+        closing_balance: dec!(1000.00),
+        is_negative: false,
+    };
+
+    let forecast = domain::CashflowForecast {
+        as_of_date: NaiveDate::from_ymd_opt(2026, 10, 8).unwrap(),
+        granularity: domain::ForecastGranularity::Month,
+        months: 3,
+        account_id: None,
+        account_name: None,
+        initial_balance: dec!(2000.00),
+        periods: vec![period1, period2, period3],
+        first_negative_period: Some("2026-12".to_string()),
+        lowest_projected_balance: dec!(-500.00),
+    };
+
+    model.goals_state.forecast = Some(forecast);
+    model
+}
+
+#[test]
+fn test_goals_tab_subviews_navigation() {
+    let mut model = create_mock_goals_model();
+    assert_eq!(model.goals_state.active_subview, GoalsSubView::Goals);
+
+    // Tecla '2' -> Projeção
+    let cmd = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.goals_state.active_subview, GoalsSubView::Forecast);
+    assert!(cmd.is_none());
+
+    // Tecla '1' -> Metas
+    let cmd = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.goals_state.active_subview, GoalsSubView::Goals);
+    assert!(cmd.is_none());
+
+    // Tecla 'v' -> Alterna
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE)),
+    );
+    assert_eq!(model.goals_state.active_subview, GoalsSubView::Forecast);
+}
+
+#[test]
+fn test_goals_tab_rendering_and_progress_bars() {
+    let backend = TestBackend::new(110, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let model = create_mock_goals_model();
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let buffer = buffer_to_string(&terminal);
+
+    assert!(buffer.contains("Metas de Economia"));
+    assert!(buffer.contains("Reserva de Emerg"));
+    assert!(buffer.contains("10.000,00"));
+    assert!(buffer.contains("6.000,00"));
+    assert!(buffer.contains("60.0%"));
+    assert!(buffer.contains("Viagem de Férias"));
+    assert!(buffer.contains("5.000,00"));
+    assert!(buffer.contains("2.500,00"));
+    assert!(buffer.contains("50.0%"));
+    assert!(buffer.contains("Detalhes da Meta Selecionada"));
+}
+
+#[test]
+fn test_goals_tab_contribution_modal_flow() {
+    let mut model = create_mock_goals_model();
+    assert!(model.goals_state.contribution_modal.is_none());
+
+    // Pressionar 'c' sobre meta manual
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+    );
+    assert!(model.goals_state.contribution_modal.is_some());
+    let modal = model.goals_state.contribution_modal.as_ref().unwrap();
+    assert_eq!(modal.goal_name, "Reserva de Emergência");
+
+    // Digitar valor inválido e pressionar Enter
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)),
+    );
+    let _ = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+    );
+    assert!(model
+        .goals_state
+        .contribution_modal
+        .as_ref()
+        .unwrap()
+        .validation_error
+        .is_some());
+
+    // Limpar e digitar valor válido
+    model
+        .goals_state
+        .contribution_modal
+        .as_mut()
+        .unwrap()
+        .amount_input = "250.00".to_string();
+    model
+        .goals_state
+        .contribution_modal
+        .as_mut()
+        .unwrap()
+        .validation_error = None;
+
+    let cmd = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+    );
+
+    assert!(model.goals_state.contribution_modal.is_none());
+    match cmd {
+        Some(Command::AddGoalContribution(input)) => {
+            assert_eq!(
+                input.amount,
+                Money::from_decimal_non_negative(dec!(250.00)).unwrap()
+            );
+        }
+        other => panic!(
+            "Esperado Command::AddGoalContribution, recebeu: {:?}",
+            other
+        ),
+    }
+
+    // Sucesso de aporte atualiza o status e solicita recarregamento das metas
+    let cmd = update(
+        &mut model,
+        Message::GoalContributionSuccess("Aporte registrado!".to_string()),
+    );
+    assert_eq!(cmd, Some(Command::FetchGoalsData));
+    assert_eq!(model.status_message, "Aporte registrado!");
+}
+
+#[test]
+fn test_forecast_subview_rendering_and_negative_highlight() {
+    let backend = TestBackend::new(110, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let model = create_mock_forecast_model();
+
+    terminal.draw(|f| view(&model, f)).unwrap();
+    let buffer = buffer_to_string(&terminal);
+
+    assert!(buffer.contains("Projeção de Fluxo de Caixa"));
+    assert!(buffer.contains("Saldo Inicial Atual: R$ 2.000,00"));
+    assert!(buffer.contains("PRIMEIRO PERÍODO NEGATIVO: 2026-12"));
+    assert!(buffer.contains("⚠️"));
+    assert!(buffer.contains("-R$ 500,00"));
+}
+
+#[test]
+fn test_forecast_include_goals_toggle() {
+    let mut model = create_mock_forecast_model();
+    assert!(!model.goals_state.include_goals);
+
+    // Tecla 'g' -> Ativa include_goals
+    let cmd = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+    );
+    assert!(model.goals_state.include_goals);
+    match cmd {
+        Some(Command::FetchForecastData { include_goals, .. }) => {
+            assert!(include_goals);
+        }
+        other => panic!("Esperado Command::FetchForecastData, recebeu: {:?}", other),
+    }
+
+    // Tecla 'w' -> Granularidade Semanal
+    let cmd = update(
+        &mut model,
+        Message::Key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE)),
+    );
+    assert_eq!(
+        model.goals_state.forecast_granularity,
+        domain::ForecastGranularity::Week
+    );
+    match cmd {
+        Some(Command::FetchForecastData { granularity, .. }) => {
+            assert_eq!(granularity, domain::ForecastGranularity::Week);
+        }
+        other => panic!("Esperado Command::FetchForecastData, recebeu: {:?}", other),
+    }
+}
+
+#[test]
+fn test_snapshot_goals_view() {
+    let backend = TestBackend::new(100, 26);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_goals_model();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("goals_view_100x26", buffer_to_string(&terminal));
+}
+
+#[test]
+fn test_snapshot_forecast_view() {
+    let backend = TestBackend::new(100, 26);
+    let mut terminal = Terminal::new(backend).expect("Deve criar terminal");
+    let mut model = create_mock_forecast_model();
+    set_deterministic_clock(&mut model);
+    terminal.draw(|f| view(&model, f)).unwrap();
+    insta::assert_snapshot!("forecast_view_100x26", buffer_to_string(&terminal));
 }

@@ -328,6 +328,133 @@ Todos os comandos de listagem e relatórios suportam o argumento `--format`:
 
 ---
 
+### 13. Interface Interativa em Terminal (`finctl tui`)
+
+O `finctl` oferece uma interface rica baseada em texto (**TUI**) desenvolvida com `ratatui` e `crossterm`, utilizando arquitetura estilo Elm (`Model`, `Message`, `update`, `view`) com consultas de banco assíncronas em segundo plano.
+
+- **Iniciar a TUI:**
+  ```bash
+  # Iniciar com o tema escuro padrão:
+  finctl tui
+
+  # Iniciar especificando tema claro:
+  finctl tui --theme light
+  ```
+
+#### Mapa Completo de Teclas e Atalhos
+
+| Contexto | Tecla(s) | Ação / Descrição |
+|---|---|---|
+| **Geral & Navegação** | `?` | Abrir / fechar painel de ajuda |
+| | `t` | Alternar tema visual dinamicamente (Claro / Escuro) |
+| | `q` ou `Ctrl+C` | Encerrar a aplicação TUI |
+| | `Tab` / `BackTab` | Avançar / retroceder aba ativa |
+| | `1` a `5` | Acesso direto às abas (`1: Dash`, `2: Lanç.`, `3: Relat.`, `4: Orçam.`, `5: Metas`) |
+| | `r` | Recarregar dados do banco de dados |
+| **Dashboard** | `r` | Atualizar indicadores e resumos do mês |
+| **Lançamentos (Tabela)** | `j` / `↓` | Mover cursor para o lançamento abaixo |
+| | `k` / `↑` | Mover cursor para o lançamento acima |
+| | `Espaço` | Alternar seleção do item (suporte a seleção múltipla) |
+| | `[` / `PgUp` | Página anterior de lançamentos |
+| | `]` / `PgDn` | Próxima página de lançamentos |
+| | `a` | Abrir formulário para adicionar novo lançamento |
+| | `e` ou `Enter` | Editar lançamento sob o cursor |
+| | `d` | Excluir lançamento(s) selecionado(s) com confirmação |
+| | `p` | Marcar lançamento(s) selecionado(s) como pago |
+| | `/` | Iniciar busca rápida textual por descrição |
+| | `f` | Abrir modal com filtros avançados (mês, conta, categoria, tipo, status, tag) |
+| **Modais & Formulários** | `Tab` / `Enter` | Avançar para o próximo campo |
+| | `Shift+Tab` / `↑` | Retroceder para o campo anterior |
+| | `Espaço` | Alternar valor em campos de múltipla escolha (Tipo, Status) |
+| | `Esc` | Cancelar edição / fechar diálogo |
+| **Relatórios** | `1` | Subvisão: Gastos por Categorias (com barras Unicode) |
+| | `2` | Subvisão: Evolução Mensal (Sparklines de receitas e despesas) |
+| | `3` | Subvisão: Comparativo detalhado com mês anterior |
+| | `[` | Mês de referência anterior |
+| | `]` | Próximo mês de referência |
+| | `i` | Alternar inclusão de lançamentos previstos (`pending`) |
+| | `p` | Definir mês de referência customizado (`AAAA-MM`) |
+| | `j` / `k` | Rolar tabela de categorias ou comparativo |
+| **Metas & Projeção** | `1` | Subvisão: Metas de Economia (gauges de progresso e detalhes) |
+| | `2` | Subvisão: Projeção de Fluxo de Caixa (gráfico sparkline e tabela) |
+| | `v` | Alternar entre subvisão de Metas e Projeção |
+| | `c` ou `a` | Abrir modal para registrar aporte manual na meta selecionada |
+| | `g` | Alternar simulação de saídas planejadas de metas na projeção |
+| | `w` / `m` | Alternar granularidade da projeção entre Semanal e Mensal |
+| | `+` / `-` | Aumentar / diminuir horizonte projetado (3 a 24 meses) |
+| | `j` / `k` | Navegar pela lista de metas ou pelas linhas da projeção |
+| **Painel de Ajuda** | `j` / `↓` | Rolar texto de ajuda para baixo |
+| | `k` / `↑` | Rolar texto de ajuda para cima |
+| | `?` ou `Esc` | Fechar o painel de ajuda |
+
+---
+
+### 14. Metas de Economia (`finctl goal`)
+
+O `finctl` gerencia objetivos financeiros com suporte a dois modelos de controle: metas vinculadas a contas bancárias específicas (cujo saldo determina o progresso) e metas independentes abastecidas por aportes manuais.
+
+- **Criar meta vinculada a conta bancária (ex: poupança ou investimentos):**
+  ```bash
+  finctl goal add --name "Reserva de Emergência" --target 10000,00 --account "Reserva de Emergência" --date 2027-10-01
+  ```
+- **Criar meta independente (com aportes manuais):**
+  ```bash
+  finctl goal add --name "Viagem de Férias" --target 5000,00 --date 2027-02-01
+  ```
+- **Listar metas ativas:**
+  ```bash
+  finctl goal list
+  # Listar todas (incluindo as já atingidas/concluídas):
+  finctl goal list --all
+  ```
+- **Detalhes e projeção de conclusão da meta:**
+  ```bash
+  finctl goal show "Viagem de Férias"
+  ```
+  Exibe o percentual concluído, valor que falta, aporte mensal necessário para atingir o alvo na data planejada e data estimada de conclusão baseada na média móvel de aportes dos últimos 90 dias.
+- **Registrar aporte manual em meta:**
+  ```bash
+  finctl goal contribute "Viagem de Férias" --amount 500,00 --note "Aporte do 13º salário"
+  ```
+- **Editar meta ou reabrir meta concluída:**
+  ```bash
+  finctl goal edit "Viagem de Férias" --target 6000,00 --date 2027-04-01
+  finctl goal edit "Reserva de Emergência" --reopen
+  ```
+- **Excluir meta (soft delete):**
+  ```bash
+  finctl goal rm "Viagem de Férias" --yes
+  ```
+
+---
+
+### 15. Projeção de Fluxo de Caixa (`finctl forecast`)
+
+Permite prever a evolução do saldo futuro no regime de caixa, projetando o impacto de lançamentos previstos (`pending`), parcelas futuras, regras recorrentes após `last_generated_date`, compras de cartão no vencimento da fatura (regra D-08) e aportes planejados de metas.
+
+- **Projeção padrão consolidada (3 meses, mensal):**
+  ```bash
+  finctl forecast
+  ```
+- **Customizar horizonte e granularidade:**
+  ```bash
+  # Projeção semanal para os próximos 6 meses:
+  finctl forecast --months 6 --granularity week
+
+  # Projeção focada em conta bancária específica:
+  finctl forecast --account "Nubank" --months 12
+  ```
+- **Simular saídas planejadas de metas ativas:**
+  ```bash
+  finctl forecast --include-goals
+  ```
+  Deduz do saldo projetado os aportes mensais necessários das metas ativas com data alvo, sem duplicar aportes manuais já registrados.
+- **Destaque automático de períodos negativos:**
+  A projeção destaca visualmente em vermelho e com alerta `⚠️` o primeiro período em que o saldo projetado fica negativo, informando o menor saldo do período.
+
+---
+
+
 ## 🛠️ Arquitetura e Qualidade
 
 O projeto adota Clean Architecture em camadas com responsabilidades estritamente separadas:

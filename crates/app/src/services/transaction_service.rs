@@ -41,6 +41,7 @@ pub struct ListTransactionsInput {
     pub offset: Option<i64>,
     pub search_description: Option<String>,
     pub deleted: Option<bool>,
+    pub all_time: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -251,7 +252,10 @@ impl<'a> TransactionService<'a> {
             let end = next_month.pred_opt().unwrap_or(start);
 
             (Some(start), Some(end))
-        } else if input.installment_group_id.is_some() || input.deleted == Some(true) {
+        } else if input.installment_group_id.is_some()
+            || input.deleted == Some(true)
+            || input.all_time
+        {
             (input.from_date, input.to_date)
         } else if input.from_date.is_none() && input.to_date.is_none() {
             // Padrão sem filtros de data: últimos 30 dias se busca não estiver ativa

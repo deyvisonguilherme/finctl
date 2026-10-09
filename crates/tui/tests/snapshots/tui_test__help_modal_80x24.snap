@@ -1,0 +1,28 @@
+---
+source: crates/tui/tests/tui_test.rs
+expression: buffer_to_string(&terminal)
+---
+┌────────────────────────────────────────────────────────┐┌────────────────────┐
+│ finctl  Controle Financeiro  [Online]                  ││08/10/2026 09:00:00 │
+└────────────────────────────────────────────────────────┘└────────────────────┘
+┌ Navegação ───────────────────────────────────────────────────────────────────┐
+│ ┌ Ajuda & Mapa de Atalhos [?] ─────────────────────────────────────────────┐ │
+└─│  MAPA COMPLETO DE ATALHOS DE TECLADO                                     │─┘
+┌ │                                                                          │─┐
+│•│── Geral & Navegação ──                                                   │ │
+│•│  ?                  Abrir / fechar este painel de ajuda                  │ │
+│ │  t                  Alternar tema visual (Claro / Escuro)                │ │
+│T│  q / Ctrl+C         Encerrar a aplicação TUI                             │ │
+│ │  Tab / BackTab      Avançar / retroceder aba ativa                       │ │
+│ │  1 - 5              Acesso direto às abas (1: Dash, 2: Lanç., 3: Relat., │ │
+└─│  r                  Recarregar dados do banco de dados                   │─┘
+┌ │                                                                          │─┐
+│A│── Dashboard ──                                                           │ │
+│ │  r                  Atualizar indicadores e resumos do mês               │ │
+│ │                                                                          │ │
+│ │── Lançamentos (Tabela) ──                                                │ │
+│ └──────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+┌──────────────────────────────────────────────┐┌──────────────────────────────┐
+│ [j/k/Setas] Rolar  [?/Esc] Fechar Ajuda      ││               Status: Pronto │
+└──────────────────────────────────────────────┘└──────────────────────────────┘

@@ -8,6 +8,8 @@ pub mod category;
 pub mod completions;
 pub mod expense;
 pub mod export;
+pub mod forecast;
+pub mod goal;
 pub mod import_cmd;
 pub mod income;
 pub mod init;
