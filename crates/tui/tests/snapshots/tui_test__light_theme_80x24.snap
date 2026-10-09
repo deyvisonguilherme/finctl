@@ -8,7 +8,7 @@ expression: buffer_to_string(&terminal)
 ┌ Navegação ───────────────────────────────────────────────────────────────────┐
 │ 1: Dashboard │ 2: Lançamentos │ 3: Relatórios │ 4: Orçamentos │ 5: Metas     │
 └──────────────────────────────────────────────────────────────────────────────┘
-┌ Saldos por Conta ────────────────────┐┌ Resumo do Mês (2026-10) ─────────────┐
+┌ Saldos por Conta (2) ────────────────┐┌ Resumo do Mês (2026-10) ─────────────┐
 │• Nubank             R$ 2.500,00      ││Receitas:     R$ 4.000,00             │
 │• Carteira           R$ 150,00        ││Despesas:     R$ 1.800,00             │
 │                                      ││─────────────────────────────         │

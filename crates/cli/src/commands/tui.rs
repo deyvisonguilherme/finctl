@@ -7,10 +7,18 @@ pub async fn handle_tui_command(
     pool: &PgPool,
     user_id: UserId,
 ) -> Result<(), (String, u8)> {
-    // 1. Instalar hook de pânico para restaurar terminal em caso de crash
+    // 1. Garantir que o banco de dados está atualizado com as últimas migrações
+    storage::run_migrations(pool).await.map_err(|e| {
+        (
+            format!("Falha ao aplicar migrações do banco de dados: {e}"),
+            2,
+        )
+    })?;
+
+    // 2. Instalar hook de pânico para restaurar terminal em caso de crash
     tui::install_panic_hook();
 
-    // 2. Inicializar o terminal no modo raw com tela alternada
+    // 3. Inicializar o terminal no modo raw com tela alternada
     let mut terminal = tui::init_terminal()
         .map_err(|e| (format!("Falha ao inicializar terminal da TUI: {e}"), 2))?;
 

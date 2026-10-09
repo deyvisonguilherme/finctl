@@ -230,9 +230,16 @@ fn render_dashboard_grid(data: &DashboardData, frame: &mut Frame, area: Rect) {
 }
 
 fn render_accounts_panel(data: &DashboardData, frame: &mut Frame, area: Rect) {
+    let total_accounts = data.balance_report.accounts.len();
+    let title = if total_accounts > 0 {
+        format!(" Saldos por Conta ({total_accounts}) ")
+    } else {
+        " Saldos por Conta ".to_string()
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Saldos por Conta ")
+        .title(title)
         .border_style(Style::default().fg(Color::Cyan));
 
     let mut lines = Vec::new();

@@ -50,6 +50,7 @@ async fn handle_export_tx(
             offset: None,
             search_description: None,
             deleted: Some(false),
+            all_time: true,
         })
         .await
         .map_err(|e| (format!("Erro ao buscar lançamentos: {e}"), 1))?;

@@ -1005,6 +1005,7 @@ pub fn build_fetch_transactions_command(model: &Model) -> Command {
             Some(state.search_query.trim().to_string())
         },
         deleted: Some(false),
+        all_time: true,
         ..Default::default()
     };
     Command::FetchTransactions(input)

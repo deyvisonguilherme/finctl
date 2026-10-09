@@ -1300,6 +1300,9 @@ fn test_snapshot_transactions_add_modal() {
         &mut model,
         Message::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
     );
+    if let Some(ref mut form) = model.transactions_state.form_modal {
+        form.date_input = "2026-10-08".to_string();
+    }
     terminal.draw(|f| view(&model, f)).unwrap();
     insta::assert_snapshot!("transactions_modal_80x24", buffer_to_string(&terminal));
 }

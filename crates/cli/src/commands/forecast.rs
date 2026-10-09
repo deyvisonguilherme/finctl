@@ -53,7 +53,7 @@ pub async fn handle_forecast_command(
             println!("PROJEÇÃO DE FLUXO DE CAIXA");
             println!("Escopo: {}", scope_desc);
             println!(
-                "Saldo Inicial Atual: R$ {}",
+                "Saldo Inicial Atual: {}",
                 format_decimal_pt_br(forecast.initial_balance)
             );
             println!(
@@ -84,38 +84,35 @@ pub async fn handle_forecast_command(
                 }
 
                 let closing_cell = if is_first_neg {
-                    Cell::new(format!(
-                        "⚠️  R$ {}",
-                        format_decimal_pt_br(p.closing_balance)
-                    ))
-                    .set_alignment(CellAlignment::Right)
-                    .fg(Color::Red)
+                    Cell::new(format!("⚠️  {}", format_decimal_pt_br(p.closing_balance)))
+                        .set_alignment(CellAlignment::Right)
+                        .fg(Color::Red)
                 } else if p.is_negative {
-                    Cell::new(format!("R$ {}", format_decimal_pt_br(p.closing_balance)))
+                    Cell::new(format_decimal_pt_br(p.closing_balance))
                         .set_alignment(CellAlignment::Right)
                         .fg(Color::Red)
                 } else {
-                    Cell::new(format!("R$ {}", format_decimal_pt_br(p.closing_balance)))
+                    Cell::new(format_decimal_pt_br(p.closing_balance))
                         .set_alignment(CellAlignment::Right)
                         .fg(Color::Green)
                 };
 
                 let net_cell = if p.net_change < Decimal::ZERO {
-                    Cell::new(format!("R$ {}", format_decimal_pt_br(p.net_change)))
+                    Cell::new(format_decimal_pt_br(p.net_change))
                         .set_alignment(CellAlignment::Right)
                         .fg(Color::Red)
                 } else {
-                    Cell::new(format!("+R$ {}", format_decimal_pt_br(p.net_change)))
-                        .set_alignment(CellAlignment::Right)
+                    let formatted = format_decimal_pt_br(p.net_change);
+                    Cell::new(format!("+{formatted}")).set_alignment(CellAlignment::Right)
                 };
 
                 table.add_row(vec![
                     Cell::new(&p.period_label).set_alignment(CellAlignment::Center),
-                    Cell::new(format!("R$ {}", format_decimal_pt_br(p.opening_balance)))
+                    Cell::new(format_decimal_pt_br(p.opening_balance))
                         .set_alignment(CellAlignment::Right),
-                    Cell::new(format!("R$ {}", format_decimal_pt_br(p.total_income)))
+                    Cell::new(format_decimal_pt_br(p.total_income))
                         .set_alignment(CellAlignment::Right),
-                    Cell::new(format!("R$ {}", format_decimal_pt_br(p.total_expense)))
+                    Cell::new(format_decimal_pt_br(p.total_expense))
                         .set_alignment(CellAlignment::Right),
                     net_cell,
                     closing_cell,
@@ -126,7 +123,7 @@ pub async fn handle_forecast_command(
 
             if let Some(ref neg_period) = forecast.first_negative_period {
                 println!(
-                    "\n⚠️  Alerta: O saldo projetado fica negativo pela primeira vez no período {} (Saldo mínimo: R$ {}).",
+                    "\n⚠️  Alerta: O saldo projetado fica negativo pela primeira vez no período {} (Saldo mínimo: {}).",
                     neg_period,
                     format_decimal_pt_br(forecast.lowest_projected_balance)
                 );

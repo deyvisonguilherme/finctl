@@ -95,6 +95,7 @@ pub async fn handle_tx_command(
                     offset: None,
                     search_description: None,
                     deleted: if deleted { Some(true) } else { Some(false) },
+                    all_time: false,
                 })
                 .await
                 .map_err(|e| match e {
